@@ -100,6 +100,8 @@ function Invoke-CommandInDirectories {
     )
     
     Write-Host "`nExecuting command in $($Directories.Count) director$(if($Directories.Count -ne 1){'ies'} else {'y'})..." -ForegroundColor Cyan
+    Write-Host "Command: " -NoNewline -ForegroundColor Gray
+    Write-Host "$Command" -ForegroundColor White
     
     $processes = @()
     
@@ -107,13 +109,17 @@ function Invoke-CommandInDirectories {
         Write-Host "Starting: " -NoNewline -ForegroundColor Gray
         Write-Host "$($directory.RelativePath)" -ForegroundColor White
         
-        $processInfo = Start-Process -FilePath 'powershell' `
-            -ArgumentList @('-NoProfile', '-Command', "Set-Location '$($directory.Path)'; $Command") `
-            -NoNewWindow -PassThru
+        # Use cmd.exe directly to handle && properly
+        $processInfo = Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList "/c", "cd /d `"$($directory.Path)`" && $Command" `
+            -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\output_$($directory.RelativePath -replace '[\\/:*?""<>|]', '_').txt" `
+            -RedirectStandardError "$env:TEMP\error_$($directory.RelativePath -replace '[\\/:*?""<>|]', '_').txt"
             
         $processes += [PSCustomObject]@{
-            Process   = $processInfo
-            Directory = $directory
+            Process    = $processInfo
+            Directory  = $directory
+            OutputFile = "$env:TEMP\output_$($directory.RelativePath -replace '[\\/:*?""<>|]', '_').txt"
+            ErrorFile  = "$env:TEMP\error_$($directory.RelativePath -replace '[\\/:*?""<>|]', '_').txt"
         }
     }
     
@@ -121,6 +127,35 @@ function Invoke-CommandInDirectories {
     
     $processes | ForEach-Object {
         $_.Process | Wait-Process
+    }
+    
+    # Display output and errors
+    foreach ($proc in $processes) {
+        Write-Host "`n[$($proc.Directory.RelativePath)] Output:" -ForegroundColor Cyan
+        
+        if (Test-Path $proc.OutputFile) {
+            $output = Get-Content $proc.OutputFile -Raw
+            if (-not [string]::IsNullOrWhiteSpace($output)) {
+                Write-Host $output -ForegroundColor White
+            }
+            Remove-Item $proc.OutputFile -Force -ErrorAction SilentlyContinue
+        }
+        
+        if (Test-Path $proc.ErrorFile) {
+            $errors = Get-Content $proc.ErrorFile -Raw
+            if (-not [string]::IsNullOrWhiteSpace($errors)) {
+                Write-Host "[$($proc.Directory.RelativePath)] Errors:" -ForegroundColor Red
+                Write-Host $errors -ForegroundColor Red
+            }
+            Remove-Item $proc.ErrorFile -Force -ErrorAction SilentlyContinue
+        }
+        
+        if ($proc.Process.ExitCode -eq 0) {
+            Write-Host "[$($proc.Directory.RelativePath)] Completed successfully" -ForegroundColor Green
+        }
+        else {
+            Write-Host "[$($proc.Directory.RelativePath)] Failed with exit code: $($proc.Process.ExitCode)" -ForegroundColor Red
+        }
     }
     
     $failedProcesses = $processes | Where-Object { $_.Process.ExitCode -ne 0 }
@@ -139,8 +174,10 @@ function Invoke-CommandInDirectories {
 }
 
 function Start-BabadeluxeMonorepoUtility {
-    Write-Host "BabaDeluxe Monorepo-like Utility" -ForegroundColor Magenta
+    Write-Host "Babadeluxe Monorepo-like Utility" -ForegroundColor Magenta
     Write-Host "=============================" -ForegroundColor Magenta
+    Write-Host "Supports command chaining like: del /s /q node_modules && npm i" -ForegroundColor Gray
+    Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Gray
     
     $command = Read-Host "`nEnter command to execute"
     
@@ -175,6 +212,5 @@ function Start-BabadeluxeMonorepoUtility {
     Invoke-CommandInDirectories -Directories $selectedDirectories -Command $command
 }
 
-# Main execution
 Set-Location $PSScriptRoot
 Start-BabadeluxeMonorepoUtility
