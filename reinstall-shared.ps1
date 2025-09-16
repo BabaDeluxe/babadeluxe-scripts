@@ -19,7 +19,7 @@ $scriptBlock = {
     }
     
     Write-Host "[$Directory] Installing $Package as dev dependency..." -ForegroundColor Cyan
-    npm i -D $Package
+    npm i -D "$Package@latest"
     
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[$Directory] Install failed"
