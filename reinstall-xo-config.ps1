@@ -1,5 +1,5 @@
 param(
-    [string[]]$Directories = @('babadeluxe-vscode', 'babadeluxe-backend', 'babadeluxe-shared'),
+    [string[]]$Directories = @('babadeluxe-vscode', 'babadeluxe-backend', 'babadeluxe-shared', 'babadeluxe-xo-config'),
     [string]$PackageName = '@babadeluxe/xo-config'
 )
 
