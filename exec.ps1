@@ -3,40 +3,20 @@
 
 function Find-DirectoriesWithBabadeluxePackages {
     param(
-        [string]$RootPath = $PSScriptRoot,
-        [string]$PackagePrefix = '@babadeluxe/'
+        [string]$RootPath = $PSScriptRoot
     )
     
-    $matchingDirectories = @()
-    
+    $results = @()
+
     Get-ChildItem -Path $RootPath -Directory | ForEach-Object {
-        $packageJsonPath = Join-Path -Path $_.FullName -ChildPath 'package.json'
-        
-        if (Test-Path -Path $packageJsonPath) {
+        $packageJsonPath = Join-Path $_.FullName 'package.json'
+        if (Test-Path $packageJsonPath) {
             try {
-                $packageContent = Get-Content -Path $packageJsonPath -Raw | ConvertFrom-Json
-                $allDependencies = @{}
-                
-                if ($packageContent.dependencies) {
-                    $packageContent.dependencies.PSObject.Properties | ForEach-Object { 
-                        $allDependencies[$_.Name] = $_.Value 
-                    }
-                }
-                
-                if ($packageContent.devDependencies) {
-                    $packageContent.devDependencies.PSObject.Properties | ForEach-Object { 
-                        $allDependencies[$_.Name] = $_.Value 
-                    }
-                }
-                
-                $hasBabadeluxePackage = $allDependencies.Keys | Where-Object { $_.StartsWith($PackagePrefix) }
-                
-                if ($hasBabadeluxePackage) {
-                    $matchingDirectories += [PSCustomObject]@{
-                        Path               = $_.FullName
-                        RelativePath       = Resolve-Path -Path $_.FullName -Relative
-                        BabadeluxePackages = $hasBabadeluxePackage
-                    }
+                $packageInfo = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
+                $results += [PSCustomObject]@{
+                    Path         = $_.FullName
+                    RelativePath = Resolve-Path $_.FullName -Relative
+                    PackageName  = $packageInfo.name
                 }
             }
             catch {
@@ -44,10 +24,9 @@ function Find-DirectoriesWithBabadeluxePackages {
             }
         }
     }
-    
-    return $matchingDirectories
-}
 
+    return $results
+}
 
 function Show-DirectorySelectionMenu {
     param(
