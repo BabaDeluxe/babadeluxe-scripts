@@ -23,6 +23,8 @@
     "eslint.format.enable": false,
     "typescript.suggest.paths": true,
     "javascript.suggest.paths": true,
+    "terminal.integrated.detectLocale": "on",
+    "files.encoding": "utf8",
     "files.eol": "\n",
     "[vue]": {
         "editor.defaultFormatter": "samverschueren.linter-xo"
