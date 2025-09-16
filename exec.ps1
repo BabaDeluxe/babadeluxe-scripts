@@ -138,37 +138,58 @@ function Invoke-CommandInDirectories {
     foreach ($proc in $processes) {
         Write-Host "`n[$($proc.Directory.RelativePath)] Output:" -ForegroundColor Cyan
         
+        $hasErrors = $false
+        $outputContent = ""
+        $errorContent = ""
+        
         if (Test-Path $proc.OutputFile) {
-            $output = Get-Content $proc.OutputFile -Raw
-            if (-not [string]::IsNullOrWhiteSpace($output)) {
-                Write-Host $output -ForegroundColor White
+            $outputContent = Get-Content $proc.OutputFile -Raw
+            if (-not [string]::IsNullOrWhiteSpace($outputContent)) {
+                Write-Host $outputContent -ForegroundColor White
             }
             Remove-Item $proc.OutputFile -Force -ErrorAction SilentlyContinue
         }
         
         if (Test-Path $proc.ErrorFile) {
-            $errors = Get-Content $proc.ErrorFile -Raw
-            if (-not [string]::IsNullOrWhiteSpace($errors)) {
+            $errorContent = Get-Content $proc.ErrorFile -Raw
+            if (-not [string]::IsNullOrWhiteSpace($errorContent)) {
                 Write-Host "[$($proc.Directory.RelativePath)] Errors:" -ForegroundColor Red
-                Write-Host $errors -ForegroundColor Red
+                Write-Host $errorContent -ForegroundColor Red
+                $hasErrors = $true
             }
             Remove-Item $proc.ErrorFile -Force -ErrorAction SilentlyContinue
         }
         
-        if ($proc.Process.ExitCode -eq 0) {
+        $exitCode = $proc.Process.ExitCode
+        $processSucceeded = $false
+        
+        if ($null -eq $exitCode -or $exitCode -eq "") {
+            $processSucceeded = -not $hasErrors -and $proc.Process.HasExited
+            $displayExitCode = if ($processSucceeded) { "0 (inferred)" } else { "unknown" }
+        }
+        else {
+            $processSucceeded = $exitCode -eq 0
+            $displayExitCode = $exitCode
+        }
+        
+        if ($processSucceeded) {
             Write-Host "[$($proc.Directory.RelativePath)] Completed successfully" -ForegroundColor Green
         }
         else {
-            Write-Host "[$($proc.Directory.RelativePath)] Failed with exit code: $($proc.Process.ExitCode)" -ForegroundColor Red
+            Write-Host "[$($proc.Directory.RelativePath)] Failed with exit code: $displayExitCode" -ForegroundColor Red
         }
+        
+        $proc | Add-Member -NotePropertyName "ProcessSucceeded" -NotePropertyValue $processSucceeded -Force
     }
     
-    $failedProcesses = $processes | Where-Object { $_.Process.ExitCode -ne 0 }
+    $failedProcesses = $processes | Where-Object { -not $_.ProcessSucceeded }
     
     if ($failedProcesses.Count -gt 0) {
         Write-Host "`nFailed operations:" -ForegroundColor Red
         $failedProcesses | ForEach-Object {
-            Write-Host "  - $($_.Directory.RelativePath) (Exit code: $($_.Process.ExitCode))" -ForegroundColor Red
+            $exitCode = $_.Process.ExitCode
+            $displayExitCode = if ($null -eq $exitCode -or $exitCode -eq "") { "unknown" } else { $exitCode }
+            Write-Host "  - $($_.Directory.RelativePath) (Exit code: $displayExitCode)" -ForegroundColor Red
         }
         Write-Host "`n$($failedProcesses.Count) operation(s) failed out of $($processes.Count) total." -ForegroundColor Red
         exit 1
