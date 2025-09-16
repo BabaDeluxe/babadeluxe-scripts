@@ -1,0 +1,50 @@
+{
+    "typescript.tsc.autoDetect": "off",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false,
+    "xo.enable": true,
+    "xo.format.enable": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "always",
+        "source.fixAll.xo": "always"
+    },
+    "files.exclude": {
+        "**/out/**": false,
+        "**/dist/**": false
+    },
+    "search.exclude": {
+        "**/out/**": true,
+        "**/dist/**": true
+    },
+    "editor.formatOnSaveMode": "file",
+    "typescript.suggest.paths": true,
+    "javascript.suggest.paths": true,
+    "files.eol": "\n",
+    "search.quickOpen.includeHistory": false,
+    "typescript.tsserver.experimental.enableProjectDiagnostics": true,
+    "[vue]": {
+        "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "samverschueren.linter-xo"
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "samverschueren.linter-xo"
+    },
+    "[javascriptreact]": {
+        "editor.defaultFormatter": "samverschueren.linter-xo"
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "samverschueren.linter-xo"
+    },
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "[jsonc]": {
+        "editor.quickSuggestions": {
+            "strings": true
+        },
+        "editor.suggest.insertMode": "replace",
+        "editor.defaultFormatter": "vscode.json-language-features"
+    }
+}
