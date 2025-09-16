@@ -1,4 +1,5 @@
 {
+    "typescript.tsserver.experimental.enableProjectDiagnostics": true,
     "typescript.tsc.autoDetect": "off",
     "editor.formatOnSave": true,
     "editor.formatOnType": false,
@@ -17,13 +18,14 @@
         "**/dist/**": true
     },
     "editor.formatOnSaveMode": "file",
+    "search.quickOpen.includeHistory": true,
+    "eslint.enable": false,
+    "eslint.format.enable": false,
     "typescript.suggest.paths": true,
     "javascript.suggest.paths": true,
     "files.eol": "\n",
-    "search.quickOpen.includeHistory": false,
-    "typescript.tsserver.experimental.enableProjectDiagnostics": true,
     "[vue]": {
-        "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+        "editor.defaultFormatter": "samverschueren.linter-xo"
     },
     "[javascript]": {
         "editor.defaultFormatter": "samverschueren.linter-xo"
