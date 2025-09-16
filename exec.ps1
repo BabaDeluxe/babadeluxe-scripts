@@ -1,5 +1,6 @@
 #Requires -Version 5.1
 
+
 function Find-DirectoriesWithBabadeluxePackages {
     param(
         [string]$RootPath = $PSScriptRoot,
@@ -8,40 +9,45 @@ function Find-DirectoriesWithBabadeluxePackages {
     
     $matchingDirectories = @()
     
-    Get-ChildItem -Path $RootPath -Recurse -Filter 'package.json' | ForEach-Object {
-        try {
-            $packageContent = Get-Content -Path $_.FullName -Raw | ConvertFrom-Json
-            $allDependencies = @{}
-            
-            if ($packageContent.dependencies) {
-                $packageContent.dependencies.PSObject.Properties | ForEach-Object { 
-                    $allDependencies[$_.Name] = $_.Value 
+    Get-ChildItem -Path $RootPath -Directory | ForEach-Object {
+        $packageJsonPath = Join-Path -Path $_.FullName -ChildPath 'package.json'
+        
+        if (Test-Path -Path $packageJsonPath) {
+            try {
+                $packageContent = Get-Content -Path $packageJsonPath -Raw | ConvertFrom-Json
+                $allDependencies = @{}
+                
+                if ($packageContent.dependencies) {
+                    $packageContent.dependencies.PSObject.Properties | ForEach-Object { 
+                        $allDependencies[$_.Name] = $_.Value 
+                    }
+                }
+                
+                if ($packageContent.devDependencies) {
+                    $packageContent.devDependencies.PSObject.Properties | ForEach-Object { 
+                        $allDependencies[$_.Name] = $_.Value 
+                    }
+                }
+                
+                $hasBabadeluxePackage = $allDependencies.Keys | Where-Object { $_.StartsWith($PackagePrefix) }
+                
+                if ($hasBabadeluxePackage) {
+                    $matchingDirectories += [PSCustomObject]@{
+                        Path               = $_.FullName
+                        RelativePath       = Resolve-Path -Path $_.FullName -Relative
+                        BabadeluxePackages = $hasBabadeluxePackage
+                    }
                 }
             }
-            
-            if ($packageContent.devDependencies) {
-                $packageContent.devDependencies.PSObject.Properties | ForEach-Object { 
-                    $allDependencies[$_.Name] = $_.Value 
-                }
+            catch {
+                Write-Warning "Failed to parse package.json at: $packageJsonPath"
             }
-            
-            $hasBabadeluxePackage = $allDependencies.Keys | Where-Object { $_.StartsWith($PackagePrefix) }
-            
-            if ($hasBabadeluxePackage) {
-                $matchingDirectories += [PSCustomObject]@{
-                    Path               = $_.Directory.FullName
-                    RelativePath       = Resolve-Path -Path $_.Directory.FullName -Relative
-                    BabadeluxePackages = $hasBabadeluxePackage
-                }
-            }
-        }
-        catch {
-            Write-Warning "Failed to parse package.json at: $($_.FullName)"
         }
     }
     
     return $matchingDirectories
 }
+
 
 function Show-DirectorySelectionMenu {
     param(
@@ -93,6 +99,7 @@ function Show-DirectorySelectionMenu {
     } while ($true)
 }
 
+
 function Invoke-CommandInDirectories {
     param(
         [PSCustomObject[]]$Directories,
@@ -109,7 +116,6 @@ function Invoke-CommandInDirectories {
         Write-Host "Starting: " -NoNewline -ForegroundColor Gray
         Write-Host "$($directory.RelativePath)" -ForegroundColor White
         
-        # Use cmd.exe directly to handle && properly
         $processInfo = Start-Process -FilePath 'cmd.exe' `
             -ArgumentList "/c", "cd /d `"$($directory.Path)`" && $Command" `
             -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\output_$($directory.RelativePath -replace '[\\/:*?""<>|]', '_').txt" `
@@ -129,7 +135,6 @@ function Invoke-CommandInDirectories {
         $_.Process | Wait-Process
     }
     
-    # Display output and errors
     foreach ($proc in $processes) {
         Write-Host "`n[$($proc.Directory.RelativePath)] Output:" -ForegroundColor Cyan
         
@@ -173,6 +178,7 @@ function Invoke-CommandInDirectories {
     }
 }
 
+
 function Start-BabadeluxeMonorepoUtility {
     Write-Host "Babadeluxe Monorepo-like Utility" -ForegroundColor Magenta
     Write-Host "=============================" -ForegroundColor Magenta
@@ -211,6 +217,7 @@ function Start-BabadeluxeMonorepoUtility {
     
     Invoke-CommandInDirectories -Directories $selectedDirectories -Command $command
 }
+
 
 Set-Location $PSScriptRoot
 Start-BabadeluxeMonorepoUtility
