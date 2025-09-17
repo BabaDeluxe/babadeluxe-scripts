@@ -58,5 +58,5 @@ if ($failedJobs.Count -gt 0) {
     exit 1
 }
 
-Write-Host "Successfully reinstalled $PackageName in all target directories. >:3" -ForegroundColor Green
+Write-Host "Successfully updated $PackageName in all target directories. >:3" -ForegroundColor Green
 exit 0
