@@ -4,6 +4,9 @@ param(
     [switch]$Production
 )
 
+chcp 65001 | Out-Null
+Write-Host ""
+
 Write-Host "🚀 Building BabaDeluxe VS Code extension (+ Vue webview) and composing it..." -ForegroundColor Green
 
 Write-Host "🧹 Cleaning dist folder..."
@@ -45,6 +48,10 @@ New-Item -ItemType Directory -Force -Path $finalDist
 # Copy extension build (the main extension files)
 Write-Host "🔧 Copying extension files..."
 Copy-Item "babadeluxe-vscode/dist/*" $finalDist -Recurse
+
+# Copy extension build (the main extension files)
+Write-Host "🔧 Copying webview files..."
+Copy-Item "babadeluxe-webview/dist/*" $finalDist -Recurse
 
 Write-Host "✅ Build and composition complete!" -ForegroundColor Green
 Write-Host "📦 Ready to publish from: $finalDist" -ForegroundColor Yellow
