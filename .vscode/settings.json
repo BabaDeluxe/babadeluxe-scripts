@@ -1,4 +1,8 @@
 {
+    "conventionalCommits.silentAutoCommit": false,
+    "conventionalCommits.autoCommit": false,
+    "git.enableSmartCommit": false,
+    "git.suggestSmartCommit": false,
     "typescript.tsserver.experimental.enableProjectDiagnostics": true,
     "typescript.tsc.autoDetect": "off",
     "editor.formatOnSave": true,
@@ -11,11 +15,11 @@
     },
     "files.exclude": {
         "**/out/**": false,
-        "**/dist/**": false
+        "**/dist/**": false,
     },
     "search.exclude": {
         "**/out/**": true,
-        "**/dist/**": true
+        "**/dist/**": true,
     },
     "editor.formatOnSaveMode": "file",
     "search.quickOpen.includeHistory": true,
@@ -23,11 +27,9 @@
     "eslint.format.enable": false,
     "typescript.suggest.paths": true,
     "javascript.suggest.paths": true,
-    "files.encoding": "utf8",
-    "files.autoGuessEncoding": true,
     "files.eol": "\n",
     "[vue]": {
-        "editor.defaultFormatter": "samverschueren.linter-xo"
+        "editor.defaultFormatter": "vscode.typescript-language-features"
     },
     "[javascript]": {
         "editor.defaultFormatter": "samverschueren.linter-xo"
