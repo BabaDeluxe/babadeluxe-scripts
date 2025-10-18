@@ -1,32 +1,38 @@
 param(
-    [string[]]$Directories = @('babadeluxe-vscode', 'babadeluxe-backend', 'babadeluxe-shared'),
-    [string]$PackageName = '@babadeluxe/xo-config'
+    [string[]]$Directories = @('babadeluxe-vscode', 'babadeluxe-backend', 'babadeluxe-shared')
 )
 
 Set-Location -Path $PSScriptRoot
 
+$packages = @(
+    '@babadeluxe/xo-config@latest',
+    '@typescript-eslint/eslint-plugin@^8.43.0',
+    '@typescript-eslint/parser@^8.43.0',
+    'xo@^1.2.2'
+)
+
 $scriptBlock = {
-    param($Directory, $Package)
+    param($Directory, $PackageList)
     
     Set-Location -Path $Directory
     
-    Write-Host "[$Directory] Uninstalling $Package..." -ForegroundColor Yellow
-    npm uninstall $Package
+    Write-Host "[$Directory] Uninstalling packages..." -ForegroundColor Yellow
+    npm uninstall $PackageList
     
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[$Directory] Uninstall failed"
         return $false
     }
     
-    Write-Host "[$Directory] Installing $Package as dev dependency..." -ForegroundColor Cyan
-    npm i -D "$Package@latest"
+    Write-Host "[$Directory] Installing packages as dev dependencies..." -ForegroundColor Cyan
+    npm i -D $PackageList
     
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[$Directory] Install failed"
         return $false
     }
     
-    Write-Host "[$Directory] Successfully reinstalled $Package" -ForegroundColor Green
+    Write-Host "[$Directory] Successfully reinstalled packages" -ForegroundColor Green
     return $true
 }
 
@@ -38,7 +44,7 @@ $jobs = foreach ($directory in $Directories) {
         continue
     }
     
-    Start-Job -ScriptBlock $scriptBlock -ArgumentList $directoryPath, $PackageName
+    Start-Job -ScriptBlock $scriptBlock -ArgumentList $directoryPath, $packages
 }
 
 if ($jobs.Count -eq 0) {
@@ -58,5 +64,5 @@ if ($failedJobs.Count -gt 0) {
     exit 1
 }
 
-Write-Host "Successfully updated $PackageName in all target directories. >:3" -ForegroundColor Green
+Write-Host "Successfully updated packages in all target directories. >:3" -ForegroundColor Green
 exit 0
