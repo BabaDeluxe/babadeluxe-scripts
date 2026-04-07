@@ -1,6 +1,5 @@
 {
-    "conventionalCommits.silentAutoCommit": false,
-    "conventionalCommits.autoCommit": false,
+    "editor.insertSpaces": true,
     "git.enableSmartCommit": false,
     "git.suggestSmartCommit": false,
     "typescript.tsserver.experimental.enableProjectDiagnostics": true,
