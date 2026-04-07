@@ -1,3 +1,15 @@
 [submodule "babadeluxe-shared"]
 	path = babadeluxe-shared
 	url = https://github.com/babadeluxe/babadeluxe-shared
+[submodule "babadeluxe-backend"]
+	path = babadeluxe-backend
+	url = https://github.com/babadeluxe/babadeluxe-backend
+[submodule "babadeluxe-webview"]
+	path = babadeluxe-webview
+	url = https://github.com/babadeluxe/babadeluxe-webview
+[submodule "babadeluxe-xo-config"]
+	path = babadeluxe-xo-config
+	url = https://github.com/babadeluxe/babadeluxe-xo-config
+[submodule "babadeluxe-vscode"]
+	path = babadeluxe-vscode
+	url = https://github.com/babadeluxe/babadeluxe-vscode
