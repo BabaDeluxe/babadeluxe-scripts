@@ -294,11 +294,12 @@ function New-GitCommandException {
     [string] $DisplayCommand,
     [Parameter(Mandatory)]
     [int] $ExitCode,
-    [Parameter(Mandatory)]
     [string[]] $StandardOutputLines,
-    [Parameter(Mandatory)]
     [string[]] $StandardErrorLines
   )
+
+  if (-not $StandardOutputLines) { $StandardOutputLines = @() }
+  if (-not $StandardErrorLines) { $StandardErrorLines = @() }
 
   $messageLines = @(
     'Git command failed.'
@@ -306,16 +307,16 @@ function New-GitCommandException {
     "Exit code: $ExitCode"
   )
 
-  if (@($StandardErrorLines).Count -gt 0) {
+  if ($StandardErrorLines.Count -gt 0) {
     $messageLines += ''
     $messageLines += 'stderr:'
-    $messageLines += @($StandardErrorLines)
+    $messageLines += $StandardErrorLines
   }
 
-  if (@($StandardOutputLines).Count -gt 0) {
+  if ($StandardOutputLines.Count -gt 0) {
     $messageLines += ''
     $messageLines += 'stdout:'
-    $messageLines += @($StandardOutputLines)
+    $messageLines += $StandardOutputLines
   }
 
   return [System.Exception]::new(($messageLines -join [System.Environment]::NewLine))
