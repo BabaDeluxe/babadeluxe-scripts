@@ -13,3 +13,6 @@
 [submodule "babadeluxe-vscode"]
 	path = babadeluxe-vscode
 	url = https://github.com/babadeluxe/babadeluxe-vscode
+[submodule "babadeluxe-landing"]
+	path = babadeluxe-landing
+	url = https://github.com/babadeluxe/babadeluxe-landing
