@@ -2,7 +2,7 @@
     "editor.insertSpaces": true,
     "git.enableSmartCommit": false,
     "git.suggestSmartCommit": false,
-    "js/ts.tsserver.experimental.enableProjectDiagnostics": true,
+    "js/ts.tsserver.experimental.enableProjectDiagnostics": false,
     "editor.formatOnSave": true,
     "editor.formatOnType": false,
     "xo.enable": true,
@@ -51,5 +51,20 @@
         },
         "editor.suggest.insertMode": "replace",
         "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "powershell.codeFormatting.preset": "OTBS",
+    "powershell.powerShellAdditionalExePaths": {
+        "Local PowerShell": "C:/Program Files/PowerShell/7/pwsh.exe",
+    },
+    "powershell.powerShellDefaultVersion": "Local PowerShell",
+    "[powershell]": {
+        "debug.saveBeforeStart": "nonUntitledEditorsInActiveGroup",
+        "editor.semanticHighlighting.enabled": false,
+        "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",.<>/?",
+        "editor.renderWhitespace": "all",
+        "editor.renderControlCharacters": true,
+        "files.trimTrailingWhitespace": true,
+        "files.encoding": "utf8bom",
+        "files.autoGuessEncoding": true,
     }
 }

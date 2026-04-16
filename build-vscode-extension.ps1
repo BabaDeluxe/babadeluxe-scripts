@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 
 [string] $root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 [string] $finalDist = Join-Path $root 'babadeluxe-vscode/final-dist'
+[string] $webviewPath = Join-Path $root 'babadeluxe-webview'
+[string] $vscodePath = Join-Path $root 'babadeluxe-vscode'
 
 Write-Host ''
 Write-Host 'Building BabaDeluxe VS Code extension (+ Vue webview) and composing it...' -ForegroundColor Green
@@ -26,15 +28,18 @@ Remove-Item -Path $finalDist -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'Building webview and extension in parallel...'
 $jobs = @(
   Start-ThreadJob -ScriptBlock {
-    Set-Location (Join-Path $using:root 'babadeluxe-webview')
+    param($path)
+    Set-Location $path
     $output = pnpm build 2>&1 | Out-String
     [PSCustomObject]@{ Name = 'webview'; ExitCode = $LASTEXITCODE; Output = $output }
-  }
+  } -ArgumentList $webviewPath
+
   Start-ThreadJob -ScriptBlock {
-    Set-Location (Join-Path $using:root 'babadeluxe-vscode')
+    param($path)
+    Set-Location $path
     $output = pnpm build 2>&1 | Out-String
     [PSCustomObject]@{ Name = 'extension'; ExitCode = $LASTEXITCODE; Output = $output }
-  }
+  } -ArgumentList $vscodePath
 )
 
 [PSCustomObject[]] $results = $jobs | Wait-Job | Receive-Job
@@ -56,10 +61,11 @@ if (Test-Path $finalDist) { Remove-Item $finalDist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $finalDist | Out-Null
 
 Write-Host 'Copying extension files...'
-Copy-Item "babadeluxe-vscode/dist/*" $finalDist -Recurse
+Copy-Item (Join-Path $vscodePath "dist/*") $finalDist -Recurse -Force
 
 Write-Host 'Copying webview files...'
-Copy-Item "babadeluxe-webview/dist/*" $finalDist -Recurse
+Copy-Item (Join-Path $webviewPath  "dist/*") $finalDist -Recurse -Force
 
 Write-Host 'Build and composition complete!' -ForegroundColor Green
 Write-Host ">:) Ready to publish from: $finalDist" -ForegroundColor Yellow
+
