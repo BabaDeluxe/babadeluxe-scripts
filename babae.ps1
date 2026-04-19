@@ -4,6 +4,8 @@
 .DESCRIPTION
     Pure PowerShell TUI editor. No dependencies, no NuGet, no DLLs.
     ANSI rendering, dark themes, cross-platform clipboard, .editorconfig support.
+.NOTES
+    https://learn.microsoft.com/en-us/powershell/scripting/install/install-ubuntu?view=powershell-7.6
 .PARAMETER Path
     Optional file to open on launch.
 .PARAMETER Theme
