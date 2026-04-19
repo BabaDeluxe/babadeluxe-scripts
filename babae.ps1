@@ -858,6 +858,10 @@ function Handle-EditKey([ConsoleKeyInfo]$keyInfo) {
     # ── editing ─────────────────────────────────────────────────────────────
 
     'Enter' {
+      # Skip bare LF (0x0A) — it's the trailing byte of a \r\n paste pair, not a real keypress
+      if ([int]$keyInfo.KeyChar -eq 0x0A) { return }
+
+
       State-Snapshot
       if ($state.SelActive) { Delete-Selection }
       $curLine = GetLine (OffsetToRowCol $state.Cursor)[0]
