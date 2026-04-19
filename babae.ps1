@@ -32,7 +32,7 @@ $ErrorActionPreference = "Stop"
 $script:frameDelayMs = 33
 $script:debugLog = $null
 if ($DebugLog.IsPresent) {
-  $script:debugLog = Join-Path $script:root 'babae-debug.log'
+  $script:debugLog = Join-Path . 'babae-debug.log'
 }
 Write-Host $script:debugLog
 
