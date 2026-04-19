@@ -18,7 +18,8 @@
 param(
   [Parameter(Position = 0)][string]$Path,
   [ValidateSet("dark", "mocha", "frappe", "github-dark")]
-  [string]$Theme = "dark"
+  [string]$Theme = "dark",
+  [switch]$DebugLog
 )
 
 $ErrorActionPreference = "Stop"
