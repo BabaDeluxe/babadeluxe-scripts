@@ -745,8 +745,7 @@ function Search-Execute([string]$term) {
   $state.Message = ' Found '
 }
 
-function Handle-EditKey([ConsoleKeyInfo]$keyInfo) {
-  $key = $keyInfo.Key
+function Handle-EditKey([ConsoleKeyInfo]$keyInfo, [bool]$isPaste = $false) {
   $ctrl = ($keyInfo.Modifiers -band [ConsoleModifiers]::Control) -ne 0
   $shift = ($keyInfo.Modifiers -band [ConsoleModifiers]::Shift) -ne 0
   $char = $keyInfo.KeyChar
@@ -858,14 +857,11 @@ function Handle-EditKey([ConsoleKeyInfo]$keyInfo) {
     # ── editing ─────────────────────────────────────────────────────────────
 
     'Enter' {
-      # Skip bare LF (0x0A) — it's the trailing byte of a \r\n paste pair, not a real keypress
       if ([int]$keyInfo.KeyChar -eq 0x0A) { return }
-
-
       State-Snapshot
       if ($state.SelActive) { Delete-Selection }
       $curLine = GetLine (OffsetToRowCol $state.Cursor)[0]
-      $leadingWS = if ($curLine -match '^(\s+)') { $Matches[1] } else { '' }
+      $leadingWS = if (-not $isPaste -and $curLine -match '^(\s+)') { $Matches[1] } else { '' }
       $ins = "`n" + $leadingWS; $t = BufText
       BufSet ($t.Substring(0, $state.Cursor) + $ins + $t.Substring($state.Cursor))
       $state.Cursor += $ins.Length
@@ -1022,9 +1018,11 @@ function Edit-Babae {
         }
       }
 
+      $isPaste = $keyBatch.Count -gt 4
+
       foreach ($key in $keyBatch) {
         switch ($state.Mode) {
-          'edit' { Handle-EditKey $key }
+          'edit' { Handle-EditKey $key $isPaste }
           'search' { Handle-SearchKey $key }
           'confirm-quit' { Handle-ConfirmQuitKey $key }
         }
