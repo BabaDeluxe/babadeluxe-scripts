@@ -91,6 +91,20 @@ $script:ec = @{
   charset                  = "utf-8"
   max_line_length          = 0
 }
+# Single source of truth for all keybindings — consumed by status bar + help dialog
+$script:commands = @(
+  [PSCustomObject]@{ Key = '^1'; Label = 'Theme' }
+  [PSCustomObject]@{ Key = '^S'; Label = 'Save' }
+  [PSCustomObject]@{ Key = '^Q'; Label = 'Quit' }
+  [PSCustomObject]@{ Key = '^F'; Label = 'Find' }
+  [PSCustomObject]@{ Key = '^Z'; Label = 'Undo' }
+  [PSCustomObject]@{ Key = '^Y'; Label = 'Redo' }
+  [PSCustomObject]@{ Key = '^A'; Label = 'Select all' }
+  [PSCustomObject]@{ Key = '^C'; Label = 'Copy' }
+  [PSCustomObject]@{ Key = '^V'; Label = 'Paste' }
+  [PSCustomObject]@{ Key = '^2'; Label = 'Help' }
+)
+
 
 function Convert-EditorConfigGlobToRegex([string]$glob) {
   $sb = [System.Text.StringBuilder]::new()
@@ -324,7 +338,6 @@ $state = [PSCustomObject]@{
   SearchBuf    = ''
   SelActive    = $false
   SelAnchor    = 0
-  CutBuffer    = [System.Text.StringBuilder]::new()
 }
 
 # ── flat-buffer primitives ───────────────────────────────────────────────────
@@ -411,7 +424,6 @@ function State-Reset {
   $state.UndoStack.Clear(); $state.RedoStack.Clear()
   $state.Mode = 'edit'; $state.SearchBuf = ''
   $state.SelActive = $false; $state.SelAnchor = 0
-  $state.CutBuffer.Clear() | Out-Null
 }
 
 function State-LoadFile([string]$path) {
@@ -447,7 +459,8 @@ function State-SaveFile {
 function State-Snapshot {
   if ($state.UndoStack.Count -ge 200) {
     $arr = $state.UndoStack.ToArray(); $state.UndoStack.Clear()
-    for ($i = 0; $i -lt ($arr.Count - 1); $i++) {
+    # Keep newest 100, discard oldest 100 — amortized O(1) trim
+    for ($i = 0; $i -lt ($arr.Count - 100); $i++) {
       $state.UndoStack.Push($arr[$arr.Count - 1 - $i])
     }
   }
@@ -508,26 +521,6 @@ function Paste-Text([string]$text) {
   $state.Dirty = $true; $state.Message = ' Pasted (clipboard) '; Reset-RenderShadow
 }
 
-function Cut-ToBuffer {
-  State-Snapshot
-  if ($state.SelActive) {
-    $sel = Get-SelectionText
-    $state.CutBuffer.Clear() | Out-Null
-    $state.CutBuffer.Append($sel) | Out-Null
-    Delete-Selection
-    $state.Message = ' Cut selection '; Reset-RenderShadow; return
-  }
-  $ls = LineStart $state.Cursor; $le = LineEnd $state.Cursor
-  $t = BufText; $hasNl = $le -lt $t.Length
-  $cut = if ($hasNl) { $t.Substring($ls, $le - $ls + 1) } else { $t.Substring($ls, $le - $ls) }
-  $state.CutBuffer.Clear() | Out-Null
-  $state.CutBuffer.Append($cut) | Out-Null
-  $after = if ($hasNl) { $le + 1 } else { $le }
-  BufSet ($t.Substring(0, $ls) + $t.Substring($after))
-  $state.Cursor = [Math]::Min($ls, (BufLen)); $state.PreferredCol = 0
-  $state.Dirty = $true; $state.Message = ' Cut line '; Reset-RenderShadow
-}
-
 
 function Clamp-Cursor { ClampCursor }
 
@@ -566,7 +559,8 @@ function Build-EditorRow([int]$rowIndex, [int]$screenWidth, [int]$textWidth) {
       $pad = [Math]::Max(0, $screenWidth - $plain.Length)
       return "$(T 'bgBar')$(T 'fgAccent')${BOLD} Search:$RESET$(T 'bgBar')$(T 'fgNorm') $($state.SearchBuf)_ $(T 'fgMuted')(Enter=jump Esc=cancel)$(' ' * $pad)$RESET"
     }
-    $leftPlain = ' ^1 Theme ^S Save ^Q Quit ^F Find ^Z Undo ^K Cut  ^2 Help '
+    $barCmds = $script:commands | Where-Object { $_.Key -in '^1', '^S', '^Q', '^F', '^Z', '^2' }
+    $leftPlain = ' ' + (($barCmds | ForEach-Object { "$($_.Key) $($_.Label)" }) -join ' ') + ' '
     $rightPlain = " $eol | $ecHint |$pos"
     if ($msg) { $rightPlain = " $msg |" + $rightPlain }
     if ($state.SelActive) { $rightPlain = " SEL |" + $rightPlain }
@@ -575,7 +569,11 @@ function Build-EditorRow([int]$rowIndex, [int]$screenWidth, [int]$textWidth) {
     if ($msg) { $right += "$(T 'fgSaved') $msg $RESET$(T 'bgBar')$(T 'fgMuted')│" }
     if ($state.SelActive) { $right += "$(T 'fgAccent') SEL $RESET$(T 'bgBar')$(T 'fgMuted')│" }
     $right += "$(T 'fgMuted') $eol $(T 'fgMuted')│ $(T 'fgMuted')$ecHint $(T 'fgMuted')│$(T 'fgAccent')$pos$RESET"
-    return "$(T 'bgBar')$(T 'fgAccent')${BOLD} ^1$RESET$(T 'bgBar')$(T 'fgMuted') Theme $(T 'fgAccent')${BOLD}^S$RESET$(T 'bgBar')$(T 'fgMuted') Save $(T 'fgAccent')${BOLD}^Q$RESET$(T 'bgBar')$(T 'fgMuted') Quit $(T 'fgAccent')${BOLD}^F$RESET$(T 'bgBar')$(T 'fgMuted') Find $(T 'fgAccent')${BOLD}^Z$RESET$(T 'bgBar')$(T 'fgMuted') Undo $(T 'fgAccent')${BOLD}^K$RESET$(T 'bgBar')$(T 'fgMuted') Cut  $(T 'fgAccent')${BOLD}^2$RESET$(T 'bgBar')$(T 'fgMuted') Help$(' ' * $pad)$right"
+    $barLeft = "$(T 'bgBar')"
+    foreach ($cmd in $barCmds) {
+      $barLeft += "$(T 'fgAccent')${BOLD}$($cmd.Key)$RESET$(T 'bgBar')$(T 'fgMuted') $($cmd.Label) "
+    }
+    return "$barLeft$(' ' * $pad)$right"
   }
 
   # ── content row ─────────────────────────────────────────────────────────
@@ -671,25 +669,21 @@ function Show-Help {
   $width = [Console]::WindowWidth
   $height = [Console]::WindowHeight
   $themeName = $script:themes[$script:themeNames[$script:themeIdx]].name
+  $cmdLines = $script:commands | ForEach-Object {
+    $pad = ' ' * ([Math]::Max(1, 10 - $_.Key.Length))
+    "  $($_.Key)$pad$($_.Label)"
+  }
   $lines = @(
     '',
     '  babae  —  keybindings',
     '  ────────────────────────────────────',
+    "  Theme now: $themeName",
+    ''
+  ) + $cmdLines + @(
     '',
-    "  ^1        Cycle theme  (now: $themeName)",
-    '  ^S        Save file',
-    '  ^Q        Quit',
-    '  ^F        Search',
-    '  ^Z / ^Y   Undo / Redo',
-    '  ^A        Select all',
-    '  ^K        Cut line / selection → internal buffer',
-    '  ^U        Paste from internal buffer',
-    '  ^C        Copy → system clipboard',
-    '  ^V        Paste ← system clipboard',
-    '  RightClick  Paste from system clipboard (Windows)',
     '  Shift+Arrows  Extend selection',
-    '',
-    '  Esc       Cancel search / clear selection',
+    '  RightClick    Paste from clipboard (Windows)',
+    '  Esc           Cancel search / clear selection',
     '',
     '  Press any key to close...',
     ''
@@ -755,7 +749,6 @@ function Handle-EditKey([ConsoleKeyInfo]$keyInfo) {
         $state.Cursor = BufLen
         $state.PreferredCol = (OffsetToRowCol $state.Cursor)[1]; return
       }
-      'K' { Cut-ToBuffer; return }
       'C' {
         $text = Get-SelectionText
         if ([string]::IsNullOrEmpty($text)) { $text = GetLine (OffsetToRowCol $state.Cursor)[0] }
@@ -847,11 +840,12 @@ function Handle-EditKey([ConsoleKeyInfo]$keyInfo) {
     'Enter' {
       State-Snapshot
       if ($state.SelActive) { Delete-Selection }
-      $indent = Get-IndentString
-      $ins = "`n" + $indent; $t = BufText
+      $curLine = GetLine (OffsetToRowCol $state.Cursor)[0]
+      $leadingWS = if ($curLine -match '^(\s+)') { $Matches[1] } else { '' }
+      $ins = "`n" + $leadingWS; $t = BufText
       BufSet ($t.Substring(0, $state.Cursor) + $ins + $t.Substring($state.Cursor))
       $state.Cursor += $ins.Length
-      $state.PreferredCol = $indent.Length; $state.Dirty = $true; return
+      $state.PreferredCol = $leadingWS.Length; $state.Dirty = $true; return
     }
 
     'Backspace' {
@@ -912,7 +906,7 @@ function Handle-SearchKey([ConsoleKeyInfo]$keyInfo) {
 function Handle-ConfirmQuitKey([ConsoleKeyInfo]$keyInfo) {
   switch ($keyInfo.Key) {
     'Y' { $script:running = $false }
-    { $_ -in 'N', 'Escape' } { $state.Mode = 'edit'; $state.Message = ' Quit cancelled ' }
+    { $_ -in 'N', 'Escape' } { $state.Mode = 'edit'; $state.Message = ' Quit cancelled '; Reset-RenderShadow }
     default { $state.Message = ' Unsaved! Y = quit   N / Esc = cancel ' }
   }
 }
@@ -972,10 +966,6 @@ function Edit-Babae {
       Update-Scroll
       Render-Frame
 
-      if ($state.Mode -eq 'confirm-quit') {
-        if ($state.Dirty) { Render-ConfirmQuit } else { $script:running = $false; continue }
-      }
-
       if ($script:mouseEnabled -and -not [Console]::KeyAvailable) {
         if ([BabaeWin]::PollRightClick($script:consoleHandle)) {
           Paste-Text (Get-ClipboardText)
@@ -1004,6 +994,10 @@ function Edit-Babae {
         }
       }
       ClampCursor
+
+      if ($state.Mode -eq 'confirm-quit') {
+        if ($state.Dirty) { Render-ConfirmQuit } else { $script:running = $false; continue }
+      }
     }
   } finally {
     if ($script:mouseEnabled) {
