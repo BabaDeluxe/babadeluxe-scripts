@@ -28,6 +28,14 @@ $ErrorActionPreference = "Stop"
 
 $script:frameDelayMs = 33
 
+$script:debugLog = $null
+
+function Write-DebugLog([string]$message) {
+  if ($null -eq $script:debugLog) { return }
+  $ts = [DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff')
+  Add-Content -LiteralPath $script:debugLog -Value "[$ts] $message" -Encoding UTF8
+}
+
 # ---------------------------------------------------------------------------
 # Themes
 # ---------------------------------------------------------------------------
@@ -933,11 +941,20 @@ function Render-ConfirmQuit {
 
 function Edit-Babae {
   [CmdletBinding()]
-  param([Parameter(Position = 0)][string]$Path)
+  param(
+    [Parameter(Position = 0)][string]$Path,
+    [switch]$DebugMe
+  )
 
   State-Reset
   Reset-RenderShadow
 
+  # Debug log init — only when -Debug is passed
+  $script:debugLog = $null
+  if ($DebugMe) {
+    $script:debugLog = (Join-Path ([System.Environment]::GetFolderPath('UserProfile')) 'babae-debug.log')
+    Write-DebugLog "[SESSION START] pid=$PID file='$Path'"
+  }
   if ($Path) {
     $resolved = Resolve-Path $Path -ErrorAction SilentlyContinue
     $state.FilePath = if ($resolved) { $resolved.Path } else { Join-Path $PWD $Path }
@@ -988,6 +1005,29 @@ function Edit-Babae {
       $keyBatch = [System.Collections.Generic.List[System.ConsoleKeyInfo]]::new()
       $keyBatch.Add([Console]::ReadKey($true))
       while ([Console]::KeyAvailable) { $keyBatch.Add([Console]::ReadKey($true)) }
+
+      # ── Debug: log each key before dispatch ────────────────────────────────
+      if ($null -ne $script:debugLog) {
+        # Bracketed paste: terminal wraps paste in ESC[200~ ... ESC[201~
+        # In raw ReadKey mode these arrive as separate key records; the bracket
+        # sequences collapse to KeyChar=0 / Key=Escape with specific residual chars.
+        # Practical heuristic: batch ≥3 items where first and last are ctrl-chars.
+        $isBracketedPaste = $keyBatch.Count -ge 3 -and
+        [int]$keyBatch[0].KeyChar -eq 0 -and
+        [int]$keyBatch[$keyBatch.Count - 1].KeyChar -eq 0
+
+        if ($isBracketedPaste) {
+          Write-DebugLog '[PASTE_START]'
+          $pasteChars = -join ($keyBatch[1..($keyBatch.Count - 2)] | ForEach-Object { $_.KeyChar })
+          Write-DebugLog "chars=$pasteChars"
+          Write-DebugLog '[PASTE_END]'
+        } else {
+          foreach ($k in $keyBatch) {
+            Write-DebugLog "Key=$($k.Key) KeyChar=0x$([int]$k.KeyChar |
+                ForEach-Object { $_.ToString('X2') }) Modifiers=$($k.Modifiers)"
+          }
+        }
+      }
 
       foreach ($key in $keyBatch) {
         switch ($state.Mode) {
