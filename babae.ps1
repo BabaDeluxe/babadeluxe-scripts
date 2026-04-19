@@ -21,7 +21,7 @@ param(
   [Parameter(Position = 0)][string]$Path,
   [ValidateSet("dark", "mocha", "frappe", "github-dark")]
   [string]$Theme = "dark",
-  [switch]$DebugLog = $False
+  [switch]$DebugLog
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +31,10 @@ $ErrorActionPreference = "Stop"
 
 $script:frameDelayMs = 33
 $script:debugLog = $null
+if ($DebugLog.IsPresent) {
+  $script:debugLog = Join-Path $script:root 'babae-debug.log'
+}
+Write-Host $script:debugLog
 
 # ---------------------------------------------------------------------------
 # Themes
@@ -89,7 +93,7 @@ function Reset-RenderShadow {
 # Debug logging
 # ---------------------------------------------------------------------------
 function Write-DebugLog([string]$message) {
-  if (($null -eq $script:debugLog) -or ($DebugLog -eq $false)) { return }
+  if ($null -eq $script:debugLog) { return }
   $ts = [DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff')
   Add-Content -LiteralPath $script:debugLog -Value "[$ts] $message" -Encoding UTF8
 }
@@ -945,21 +949,10 @@ function Render-ConfirmQuit {
 }
 
 function Edit-Babae {
-  [CmdletBinding()]
-  param(
-    [Parameter(Position = 0)][string]$Path,
-    [switch]$DebugLog
-  )
+  Write-DebugLog "[SESSION START] pid=$PID file='$Path'"
 
   State-Reset
   Reset-RenderShadow
-
-  # Debug log init — only when -DebugLog is passed
-  $script:debugLog = $null
-  if ($DebugLog) {
-    $script:debugLog = (Join-Path ([System.Environment]::GetFolderPath('UserProfile')) 'babae-debug.log')
-    Write-DebugLog "[SESSION START] pid=$PID file='$Path'"
-  }
 
   if ($Path) {
     $resolved = Resolve-Path $Path -ErrorAction SilentlyContinue
@@ -973,7 +966,7 @@ function Edit-Babae {
 
   $oldCtrlC = [Console]::TreatControlCAsInput
   [Console]::TreatControlCAsInput = $true
-  Out-Flush("`e[2J`e[H`e[?25l")
+  Out-Flush "`e[2J`e[H`e[?25l"
 
   $prevWidth = 0
   $prevHeight = 0
@@ -1006,29 +999,22 @@ function Edit-Babae {
         continue
       }
 
-      # Drain entire key buffer before processing — makes paste identical
-      # to typing: same code path, same snapshot-per-char, one render tick.
       $keyBatch = [System.Collections.Generic.List[System.ConsoleKeyInfo]]::new()
       $keyBatch.Add([Console]::ReadKey($true))
       while ([Console]::KeyAvailable) { $keyBatch.Add([Console]::ReadKey($true)) }
 
-      # Bracketed paste: ESC[200~ ... ESC[201~ arrives as KeyChar=0 sentinel records
-      # at head and tail of a multi-key batch. Heuristic: batch >= 3, first and
-      # last records have KeyChar 0 (non-printable control, no bound key name).
-      if ($null -ne $script:debugLog) {
-        $isBracketedPaste = $keyBatch.Count -ge 3 -and
-        [int]$keyBatch[0].KeyChar -eq 0 -and
-        [int]$keyBatch[$keyBatch.Count - 1].KeyChar -eq 0
+      # Write-DebugLog no-ops when $script:debugLog is $null — no outer guard needed
+      $isBracketedPaste = $keyBatch.Count -ge 3 -and
+      [int]$keyBatch[0].KeyChar -eq 0 -and
+      [int]$keyBatch[$keyBatch.Count - 1].KeyChar -eq 0
 
-        if ($isBracketedPaste) {
-          Write-DebugLog '[PASTE_START]'
-          $pasteChars = -join ($keyBatch[1..($keyBatch.Count - 2)] | ForEach-Object { $_.KeyChar })
-          Write-DebugLog "chars=$pasteChars"
-          Write-DebugLog '[PASTE_END]'
-        } else {
-          foreach ($k in $keyBatch) {
-            Write-DebugLog ("Key=$($k.Key) KeyChar=0x$(([int]$k.KeyChar).ToString('X2')) Modifiers=$($k.Modifiers)")
-          }
+      if ($isBracketedPaste) {
+        Write-DebugLog '[PASTE_START]'
+        Write-DebugLog "chars=$(-join ($keyBatch[1..($keyBatch.Count - 2)] | ForEach-Object { $_.KeyChar }))"
+        Write-DebugLog '[PASTE_END]'
+      } else {
+        foreach ($k in $keyBatch) {
+          Write-DebugLog "Key=$($k.Key) KeyChar=0x$(([int]$k.KeyChar).ToString('X2')) Modifiers=$($k.Modifiers)"
         }
       }
 
@@ -1051,11 +1037,11 @@ function Edit-Babae {
       try { [BabaeWin]::SetModeValue($script:consoleHandle, $script:origConsoleMode) } catch {}
     }
     [Console]::TreatControlCAsInput = $oldCtrlC
-    Out-Flush("`e[?25h`e[2J`e[H`e[0m")
+    Out-Flush "`e[?25h`e[2J`e[H`e[0m"
     Write-Host 'babae: session ended.' -ForegroundColor Cyan
     if ($state.FilePath) { Write-Host "File : $($state.FilePath)" -ForegroundColor DarkGray }
   }
 }
 
 Set-Alias -Name babae -Value Edit-Babae -Scope Global
-Edit-Babae -Path $Path -DebugLog:$DebugLog
+Edit-Babae -Path $Path
