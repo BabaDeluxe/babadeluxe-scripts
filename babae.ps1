@@ -11,6 +11,8 @@
     Optional file to open on launch.
 .PARAMETER Theme
     Starting theme: dark (default) | mocha | frappe | github-dark
+.PARAMETER DebugLog
+    Enable log file as debugging helper during development
 .EXAMPLE
     pwsh ./babae.ps1
     pwsh ./babae.ps1 myfile.txt -Theme mocha
@@ -19,7 +21,7 @@ param(
   [Parameter(Position = 0)][string]$Path,
   [ValidateSet("dark", "mocha", "frappe", "github-dark")]
   [string]$Theme = "dark",
-  [switch]$DebugLog
+  [switch]$DebugLog = $False
 )
 
 $ErrorActionPreference = "Stop"
@@ -87,7 +89,7 @@ function Reset-RenderShadow {
 # Debug logging
 # ---------------------------------------------------------------------------
 function Write-DebugLog([string]$message) {
-  if ($null -eq $script:debugLog) { return }
+  if (($null -eq $script:debugLog) -or ($DebugLog -eq $false)) { return }
   $ts = [DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff')
   Add-Content -LiteralPath $script:debugLog -Value "[$ts] $message" -Encoding UTF8
 }
@@ -1056,4 +1058,4 @@ function Edit-Babae {
 }
 
 Set-Alias -Name babae -Value Edit-Babae -Scope Global
-Edit-Babae @PSBoundParameters
+Edit-Babae -Path $Path -DebugLog:$DebugLog
