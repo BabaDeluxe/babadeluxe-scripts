@@ -27,14 +27,7 @@ $ErrorActionPreference = "Stop"
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
 $script:frameDelayMs = 33
-
 $script:debugLog = $null
-
-function Write-DebugLog([string]$message) {
-  if ($null -eq $script:debugLog) { return }
-  $ts = [DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff')
-  Add-Content -LiteralPath $script:debugLog -Value "[$ts] $message" -Encoding UTF8
-}
 
 # ---------------------------------------------------------------------------
 # Themes
@@ -87,6 +80,15 @@ function Reset-RenderShadow {
   $script:lastCursorRow = -1
   $script:lastCursorCol = -1
   $script:lastCursorVisible = $false
+}
+
+# ---------------------------------------------------------------------------
+# Debug logging
+# ---------------------------------------------------------------------------
+function Write-DebugLog([string]$message) {
+  if ($null -eq $script:debugLog) { return }
+  $ts = [DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff')
+  Add-Content -LiteralPath $script:debugLog -Value "[$ts] $message" -Encoding UTF8
 }
 
 # ---------------------------------------------------------------------------
@@ -943,18 +945,19 @@ function Edit-Babae {
   [CmdletBinding()]
   param(
     [Parameter(Position = 0)][string]$Path,
-    [switch]$DebugMe
+    [switch]$DebugLog
   )
 
   State-Reset
   Reset-RenderShadow
 
-  # Debug log init — only when -Debug is passed
+  # Debug log init — only when -DebugLog is passed
   $script:debugLog = $null
-  if ($DebugMe) {
+  if ($DebugLog) {
     $script:debugLog = (Join-Path ([System.Environment]::GetFolderPath('UserProfile')) 'babae-debug.log')
     Write-DebugLog "[SESSION START] pid=$PID file='$Path'"
   }
+
   if ($Path) {
     $resolved = Resolve-Path $Path -ErrorAction SilentlyContinue
     $state.FilePath = if ($resolved) { $resolved.Path } else { Join-Path $PWD $Path }
@@ -1006,12 +1009,10 @@ function Edit-Babae {
       $keyBatch.Add([Console]::ReadKey($true))
       while ([Console]::KeyAvailable) { $keyBatch.Add([Console]::ReadKey($true)) }
 
-      # ── Debug: log each key before dispatch ────────────────────────────────
+      # Bracketed paste: ESC[200~ ... ESC[201~ arrives as KeyChar=0 sentinel records
+      # at head and tail of a multi-key batch. Heuristic: batch >= 3, first and
+      # last records have KeyChar 0 (non-printable control, no bound key name).
       if ($null -ne $script:debugLog) {
-        # Bracketed paste: terminal wraps paste in ESC[200~ ... ESC[201~
-        # In raw ReadKey mode these arrive as separate key records; the bracket
-        # sequences collapse to KeyChar=0 / Key=Escape with specific residual chars.
-        # Practical heuristic: batch ≥3 items where first and last are ctrl-chars.
         $isBracketedPaste = $keyBatch.Count -ge 3 -and
         [int]$keyBatch[0].KeyChar -eq 0 -and
         [int]$keyBatch[$keyBatch.Count - 1].KeyChar -eq 0
@@ -1023,8 +1024,7 @@ function Edit-Babae {
           Write-DebugLog '[PASTE_END]'
         } else {
           foreach ($k in $keyBatch) {
-            Write-DebugLog "Key=$($k.Key) KeyChar=0x$([int]$k.KeyChar |
-                ForEach-Object { $_.ToString('X2') }) Modifiers=$($k.Modifiers)"
+            Write-DebugLog ("Key=$($k.Key) KeyChar=0x$(([int]$k.KeyChar).ToString('X2')) Modifiers=$($k.Modifiers)")
           }
         }
       }
@@ -1043,6 +1043,7 @@ function Edit-Babae {
       }
     }
   } finally {
+    Write-DebugLog '[SESSION END]'
     if ($script:mouseEnabled) {
       try { [BabaeWin]::SetModeValue($script:consoleHandle, $script:origConsoleMode) } catch {}
     }
