@@ -1,18 +1,25 @@
 [submodule "babadeluxe-shared"]
 	path = babadeluxe-shared
 	url = https://github.com/babadeluxe/babadeluxe-shared
+  ignore = dirty
 [submodule "babadeluxe-backend"]
 	path = babadeluxe-backend
 	url = https://github.com/babadeluxe/babadeluxe-backend
+  ignore = dirty
 [submodule "babadeluxe-webview"]
 	path = babadeluxe-webview
 	url = https://github.com/babadeluxe/babadeluxe-webview
+  ignore = dirty
 [submodule "babadeluxe-xo-config"]
 	path = babadeluxe-xo-config
 	url = https://github.com/babadeluxe/babadeluxe-xo-config
+  ignore = dirty
 [submodule "babadeluxe-vscode"]
 	path = babadeluxe-vscode
 	url = https://github.com/babadeluxe/babadeluxe-vscode
+  ignore = dirty
 [submodule "babadeluxe-landing"]
 	path = babadeluxe-landing
 	url = https://github.com/babadeluxe/babadeluxe-landing
+	ignore = dirty
+
