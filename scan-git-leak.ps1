@@ -10,7 +10,8 @@ the correct choice when you need to know whether the repository contents at a gi
 commit contained the term anywhere in tracked files.
 
 .PARAMETER RootPath
-The directory to search recursively for Git repositories.
+The directory to search recursively for Git repositories. Forward slashes, trailing
+slashes, and relative paths are all accepted.
 
 .PARAMETER SearchTerm
 The text or regex pattern to search for.
@@ -28,14 +29,14 @@ Optional Git pathspec filters, for example: 'src/**', '*.cs', '*.ts'
 Optional path to export results as CSV.
 
 .EXAMPLE
-pwsh ./Find-GitCommitSnapshotTerm.ps1 -RootPath 'D:\src' -SearchTerm 'FeatureFlagAlpha'
+pwsh ./Find-GitCommitSnapshotTerm.ps1 -RootPath 'D:/src' -SearchTerm 'FeatureFlagAlpha'
 
 .EXAMPLE
 pwsh ./Find-GitCommitSnapshotTerm.ps1 `
-  -RootPath 'D:\src' `
+  -RootPath 'D:/src' `
   -SearchTerm 'tenantId' `
   -IncludePath 'src/**' `
-  -OutputCsvPath '.\output\snapshot-results.csv'
+  -OutputCsvPath './output/snapshot-results.csv'
 
 .OUTPUTS
 PSCustomObject
@@ -67,15 +68,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+
+# region --- Git Helpers ---
+
+
 function Test-GitAvailable {
   [CmdletBinding()]
   param()
 
   $gitCommand = Get-Command -Name git -ErrorAction SilentlyContinue
   if ($null -eq $gitCommand) {
-    throw "git was not found in PATH."
+    throw 'git was not found in PATH.'
   }
 }
+
 
 function Invoke-Git {
   [CmdletBinding()]
@@ -101,6 +107,7 @@ function Invoke-Git {
   return @($output | ForEach-Object { $_.ToString() })
 }
 
+
 function Resolve-GitRepositoryRoot {
   [CmdletBinding()]
   param(
@@ -121,6 +128,7 @@ function Resolve-GitRepositoryRoot {
   return [System.IO.Path]::GetFullPath($trimmedRoot)
 }
 
+
 function Get-GitRepositoryRoots {
   [CmdletBinding()]
   param(
@@ -134,19 +142,15 @@ function Get-GitRepositoryRoots {
   )
 
   foreach ($gitDirectory in Get-ChildItem -LiteralPath $resolvedSearchRoot -Directory -Filter '.git' -Force -Recurse -ErrorAction SilentlyContinue) {
-    $candidatePath = $gitDirectory.Parent.FullName
-    $repoRoot = Resolve-GitRepositoryRoot -CandidatePath $candidatePath
-
-    if ($repoRoot -ne $null) {
+    $repoRoot = Resolve-GitRepositoryRoot -CandidatePath $gitDirectory.Parent.FullName
+    if ($null -ne $repoRoot) {
       $null = $repoRoots.Add($repoRoot)
     }
   }
 
   foreach ($gitFile in Get-ChildItem -LiteralPath $resolvedSearchRoot -File -Filter '.git' -Force -Recurse -ErrorAction SilentlyContinue) {
-    $candidatePath = $gitFile.Directory.FullName
-    $repoRoot = Resolve-GitRepositoryRoot -CandidatePath $candidatePath
-
-    if ($repoRoot -ne $null) {
+    $repoRoot = Resolve-GitRepositoryRoot -CandidatePath $gitFile.Directory.FullName
+    if ($null -ne $repoRoot) {
       $null = $repoRoots.Add($repoRoot)
     }
   }
@@ -154,122 +158,239 @@ function Get-GitRepositoryRoots {
   return @($repoRoots | Sort-Object)
 }
 
-Test-GitAvailable
 
-if (-not (Test-Path -LiteralPath $RootPath -PathType Container)) {
-  throw "RootPath does not exist or is not a directory: $RootPath"
+# endregion
+
+
+# region --- Grep Helpers ---
+
+function ConvertFrom-GrepOutput {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]
+    [string[]]$GrepOutput
+  )
+
+  $matchingFiles = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+
+  foreach ($line in $GrepOutput) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+    # Format: <commit>:<filepath>:<linenum>:<content>
+    # Split on the first two colons only to isolate the filepath
+    $firstColon = $line.IndexOf(':')
+    if ($firstColon -lt 0) { continue }
+
+    $secondColon = $line.IndexOf(':', $firstColon + 1)
+    if ($secondColon -lt 0) { continue }
+
+    $filePath = $line.Substring($firstColon + 1, $secondColon - $firstColon - 1)
+    if (-not [string]::IsNullOrWhiteSpace($filePath)) {
+      $null = $matchingFiles.Add($filePath)
+    }
+  }
+
+  return , $matchingFiles
 }
 
-$repositories = Get-GitRepositoryRoots -SearchRoot $RootPath
+function Build-GrepArguments {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]
+    [string]$SearchTerm,
+
+    [Parameter(Mandatory)]
+    [string]$CommitHash,
+
+    [Parameter()]
+    [switch]$CaseSensitive,
+
+    [Parameter()]
+    [switch]$UseRegex,
+
+    [Parameter()]
+    [string[]]$IncludePath = @()
+  )
+
+  $grepArguments = @('grep', '-n', '-I', '--full-name')
+
+  if (-not $CaseSensitive) {
+    $grepArguments += '-i'
+  }
+
+  if (-not $UseRegex) {
+    $grepArguments += '-F'
+  }
+
+  $grepArguments += @('-e', $SearchTerm, $CommitHash)
+
+  if ($IncludePath.Count -gt 0) {
+    $grepArguments += '--'
+    $grepArguments += $IncludePath
+  }
+
+  return $grepArguments
+}
+
+
+# endregion
+
+
+# region --- Commit Helpers ---
+
+
+function Get-CommitMetadata {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]
+    [string]$RepositoryPath,
+
+    [Parameter(Mandatory)]
+    [string]$CommitHash
+  )
+
+  $metadata = Invoke-Git `
+    -RepositoryPath $RepositoryPath `
+    -Arguments @('show', '-s', '--format=%H%x1f%aI%x1f%an%x1f%s', $CommitHash)
+
+  $header = (($metadata -join "`n").Trim()).Split([char]0x1f)
+  if ($header.Count -lt 4) {
+    return $null
+  }
+
+  return [PSCustomObject]@{
+    commitHash = $header[0]
+    authorDate = [datetimeoffset]::Parse($header[1])
+    authorName = $header[2]
+    subject    = $header[3]
+  }
+}
+
+
+function New-SnapshotResult {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]
+    [string]$RepositoryPath,
+
+    [Parameter(Mandatory)]
+    [PSCustomObject]$CommitMetadata,
+
+    [Parameter(Mandatory)]
+    [System.Collections.Generic.HashSet[string]]$MatchingFiles
+  )
+
+  $sortedFiles = @($MatchingFiles | Sort-Object)
+
+  return [PSCustomObject]@{
+    repositoryPath    = $RepositoryPath
+    searchMode        = 'SnapshotHistory'
+    commitHash        = $CommitMetadata.commitHash
+    authorDate        = $CommitMetadata.authorDate
+    authorName        = $CommitMetadata.authorName
+    subject           = $CommitMetadata.subject
+    matchingFileCount = $MatchingFiles.Count
+    matchingFiles     = $sortedFiles
+    matchingFilesText = ($sortedFiles -join '; ')
+  }
+}
+
+
+# endregion
+
+
+# region --- CSV Export ---
+
+
+function Export-ResultsToCsv {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]
+    [System.Collections.Generic.List[object]]$Results,
+
+    [Parameter(Mandatory)]
+    [string]$OutputCsvPath
+  )
+
+  $outputDirectory = Split-Path -Path $OutputCsvPath -Parent
+  if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path -LiteralPath $outputDirectory)) {
+    $null = New-Item -ItemType Directory -Path $outputDirectory -Force
+  }
+
+  $Results |
+  Sort-Object repositoryPath, authorDate, commitHash |
+  Export-Csv -LiteralPath $OutputCsvPath -NoTypeInformation -Encoding utf8
+}
+
+
+# endregion
+
+
+# region --- Entry Point ---
+
+Test-GitAvailable
+
+# Normalize path: handles forward slashes, trailing slashes, and relative paths
+$resolvedRootPath = [System.IO.Path]::GetFullPath(
+  $RootPath.TrimEnd('\', '/', ' ')
+)
+
+if (-not (Test-Path -LiteralPath $resolvedRootPath -PathType Container)) {
+  throw "RootPath does not exist or is not a directory: $resolvedRootPath"
+}
+
+[string[]]$repositories = @(Get-GitRepositoryRoots -SearchRoot $resolvedRootPath)
 $results = [System.Collections.Generic.List[object]]::new()
 
 foreach ($repository in $repositories) {
   Write-Verbose "Enumerating commits in repository: $repository"
 
-  $commitHashes = Invoke-Git -RepositoryPath $repository -Arguments @('rev-list', '--all')
+  [string[]]$commitHashes = @(Invoke-Git -RepositoryPath $repository -Arguments @('rev-list', '--all'))
   $totalCommitCount = $commitHashes.Count
 
   for ($commitIndex = 0; $commitIndex -lt $totalCommitCount; $commitIndex++) {
     $commitHash = $commitHashes[$commitIndex].Trim()
-    if ([string]::IsNullOrWhiteSpace($commitHash)) {
-      continue
-    }
+    if ([string]::IsNullOrWhiteSpace($commitHash)) { continue }
 
     Write-Progress `
-      -Activity "Scanning commit snapshots" `
+      -Activity 'Scanning commit snapshots' `
       -Status "$repository ($($commitIndex + 1)/$totalCommitCount)" `
       -PercentComplete ((($commitIndex + 1) / [math]::Max($totalCommitCount, 1)) * 100)
 
-    $grepArguments = @(
-      'grep'
-      '-n'
-      '-I'
-      '--full-name'
-    )
+    $grepArguments = Build-GrepArguments `
+      -SearchTerm $SearchTerm `
+      -CommitHash $commitHash `
+      -CaseSensitive:$CaseSensitive `
+      -UseRegex:$UseRegex `
+      -IncludePath $IncludePath
 
-    if (-not $CaseSensitive) {
-      $grepArguments += '-i'
-    }
+    [string[]]$grepOutput = @(Invoke-Git -RepositoryPath $repository -Arguments $grepArguments -AllowedExitCodes @(0, 1))
+    if ($grepOutput.Count -eq 0) { continue }
 
-    if (-not $UseRegex) {
-      $grepArguments += '-F'
-    }
+    $matchingFiles = ConvertFrom-GrepOutput -GrepOutput $grepOutput
+    if ($matchingFiles.Count -eq 0) { continue }
 
-    $grepArguments += @('-e', $SearchTerm, $commitHash)
+    $commitMetadata = Get-CommitMetadata -RepositoryPath $repository -CommitHash $commitHash
+    if ($null -eq $commitMetadata) { continue }
 
-    if ($IncludePath.Count -gt 0) {
-      $grepArguments += '--'
-      $grepArguments += $IncludePath
-    }
-
-    $grepOutput = Invoke-Git -RepositoryPath $repository -Arguments $grepArguments -AllowedExitCodes @(0, 1)
-
-    if ($grepOutput.Count -eq 0) {
-      continue
-    }
-
-    $matchingFiles = [System.Collections.Generic.HashSet[string]]::new(
-      [System.StringComparer]::OrdinalIgnoreCase
-    )
-
-    foreach ($line in $grepOutput) {
-      $trimmedLine = $line.Trim()
-      if ([string]::IsNullOrWhiteSpace($trimmedLine)) {
-        continue
-      }
-
-      $parts = $trimmedLine -split ':', 4
-      if ($parts.Count -lt 4) {
-        continue
-      }
-
-      $filePath = $parts[1].Trim()
-      if ([string]::IsNullOrWhiteSpace($filePath)) {
-        continue
-      }
-
-      $null = $matchingFiles.Add($filePath)
-    }
-
-    if ($matchingFiles.Count -eq 0) {
-      continue
-    }
-
-    $metadata = Invoke-Git `
-      -RepositoryPath $repository `
-      -Arguments @('show', '-s', '--format=%H%x1f%aI%x1f%an%x1f%s', $commitHash)
-
-    $header = (($metadata -join "`n").Trim()).Split([char]0x1f)
-    if ($header.Count -lt 4) {
-      continue
-    }
-
-    $results.Add([PSCustomObject]@{
-        repositoryPath    = $repository
-        searchMode        = 'SnapshotHistory'
-        commitHash        = $header[0]
-        authorDate        = [datetimeoffset]::Parse($header[1])
-        authorName        = $header[2]
-        subject           = $header[3]
-        matchingFileCount = $matchingFiles.Count
-        matchingFiles     = @($matchingFiles | Sort-Object)
-        matchingFilesText = (@($matchingFiles | Sort-Object) -join '; ')
-      })
+    $results.Add((New-SnapshotResult -RepositoryPath $repository -CommitMetadata $commitMetadata -MatchingFiles $matchingFiles))
   }
 }
 
-Write-Progress -Activity "Scanning commit snapshots" -Completed
+Write-Progress -Activity 'Scanning commit snapshots' -Completed
+
+if ($results.Count -eq 0) {
+  Write-Host "Scan complete. No matches found for '$SearchTerm' across $($repositories.Count) repositories." -ForegroundColor Green
+} else {
+  Write-Host "Scan complete. Found $($results.Count) matching commits for '$SearchTerm' across $($repositories.Count) repositories." -ForegroundColor Yellow
+}
 
 if ($PSBoundParameters.ContainsKey('OutputCsvPath')) {
-  $outputDirectory = Split-Path -Path $OutputCsvPath -Parent
-
-  if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path -LiteralPath $outputDirectory)) {
-    $null = New-Item -ItemType Directory -Path $outputDirectory -Force
-  }
-
-  $results |
-  Sort-Object repositoryPath, authorDate, commitHash |
-  Export-Csv -LiteralPath $OutputCsvPath -NoTypeInformation -Encoding utf8
+  Export-ResultsToCsv -Results $results -OutputCsvPath $OutputCsvPath
 }
 
 $results | Sort-Object repositoryPath, authorDate, commitHash
+
+# endregion
