@@ -2,24 +2,34 @@
 	path = babadeluxe-shared
 	url = https://github.com/babadeluxe/babadeluxe-shared
   ignore = dirty
+	branch = master
 [submodule "babadeluxe-backend"]
 	path = babadeluxe-backend
 	url = https://github.com/babadeluxe/babadeluxe-backend
   ignore = dirty
+	branch = master
 [submodule "babadeluxe-webview"]
 	path = babadeluxe-webview
 	url = https://github.com/babadeluxe/babadeluxe-webview
   ignore = dirty
+	branch = master
 [submodule "babadeluxe-xo-config"]
 	path = babadeluxe-xo-config
 	url = https://github.com/babadeluxe/babadeluxe-xo-config
   ignore = dirty
+	branch = master
 [submodule "babadeluxe-vscode"]
 	path = babadeluxe-vscode
 	url = https://github.com/babadeluxe/babadeluxe-vscode
   ignore = dirty
+	branch = master
 [submodule "babadeluxe-landing"]
 	path = babadeluxe-landing
 	url = https://github.com/babadeluxe/babadeluxe-landing
 	ignore = dirty
+	branch = main
 
+[submodule "agent-resources"]
+	path = agent-resources
+	url = https://github.com/simwai/agent-resources
+	branch = main

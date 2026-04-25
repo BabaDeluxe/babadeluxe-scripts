@@ -1,0 +1,1 @@
+./agent-resources/AGENT_COMMIT.agent.md
