@@ -511,13 +511,13 @@ function Write-SubmoduleDiagnosis {
       Write-Host "       $p" -ForegroundColor $script:brand.Muted
     }
     # Detached HEAD means the submodule is sitting on a raw commit SHA with no branch pointer.
-    # This happens because 'git submodule update' without --merge checks out the pinned SHA directly
-    # instead of merging it into the tracked branch. Without a branch, git cannot push, pull, or
-    # know where to send new commits — any work done here will be lost on the next update.
+    # With --merge in place, the usual cause is missing branch metadata in .gitmodules,
+    # so git has no branch to merge into and falls back to a detached checkout.
+    # Without a branch, git cannot push, pull, or know where to send new commits.
     # Option [10] will set the tracked branch in .gitmodules and then check it out automatically.
-    Write-BabaStatus '[!]' 'Cause: git checked out a raw commit SHA instead of a branch (no --merge).' $script:brand.Muted
+    Write-BabaStatus '[!]' 'Cause: no tracked branch is configured for the submodule, so git falls back to a detached commit checkout.' $script:brand.Muted
     Write-BabaStatus '[!]' 'Effect: pushes and pulls will fail; new commits may be lost on next update.' $script:brand.Warning
-    Write-BabaStatus '[!]' 'Fix: run option [10] — it sets the tracked branch and checks it out for you.' $script:brand.Highlight
+    Write-BabaStatus '[!]' 'Fix: run option [10] — it sets the tracked branch in .gitmodules and checks it out for you, then run option [4].' $script:brand.Highlight
     Write-Host ''
   }
 
@@ -578,7 +578,7 @@ function Read-SubmoduleChoice {
 function Select-SingleSubmodule {
   param([string[]] $RegisteredPaths, [string] $Prompt = 'Select submodule')
   Show-SubmoduleList -Paths $RegisteredPaths
-  $selected = Read-SubmoduleChoice -Paths $RegisteredPaths -Prompt $Prompt
+  $selected = Read-SubmoduleChoice -Paths $Paths -Prompt $Prompt
   if (-not $selected) { throw 'Invalid selection. Aborting.' }
   return $selected
 }
