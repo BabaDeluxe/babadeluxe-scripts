@@ -510,7 +510,14 @@ function Write-SubmoduleDiagnosis {
     foreach ($p in $detachedPaths) {
       Write-Host "       $p" -ForegroundColor $script:brand.Muted
     }
-    Write-BabaStatus '[!]' 'Run option [10] Fix missing tracked branches, then option [4] Initialize & Update.' $script:brand.Highlight
+    # Detached HEAD means the submodule is sitting on a raw commit SHA with no branch pointer.
+    # This happens because 'git submodule update' without --merge checks out the pinned SHA directly
+    # instead of merging it into the tracked branch. Without a branch, git cannot push, pull, or
+    # know where to send new commits — any work done here will be lost on the next update.
+    # Option [10] will set the tracked branch in .gitmodules and then check it out automatically.
+    Write-BabaStatus '[!]' 'Cause: git checked out a raw commit SHA instead of a branch (no --merge).' $script:brand.Muted
+    Write-BabaStatus '[!]' 'Effect: pushes and pulls will fail; new commits may be lost on next update.' $script:brand.Warning
+    Write-BabaStatus '[!]' 'Fix: run option [10] — it sets the tracked branch and checks it out for you.' $script:brand.Highlight
     Write-Host ''
   }
 
@@ -704,8 +711,8 @@ function Sync-SubmodulesFull {
   Write-BabaStatus '[i]' 'Use this when submodules are missing, empty, or checked out at the wrong commit.' $script:brand.Muted
   Write-Host ''
   Invoke-InScope -WithDiagnosis {
-    # --merge ensures each submodule is merged into its tracked branch rather than
-    # dropped on a detached SHA, preventing the chronic detached HEAD state.
+    # --merge integrates the remote tip into the tracked branch instead of detaching HEAD onto a raw SHA.
+    # Without it, every update leaves submodules in detached HEAD state — on a commit with no branch pointer.
     Invoke-GitCommand -Arguments @('submodule', 'update', '--remote', '--init', '--recursive', '--merge')
   }
   Pause-Baba
@@ -883,7 +890,49 @@ function Fix-MissingTrackedBranches {
         continue
       }
 
+      # Write the tracked branch into .gitmodules so future updates know where to follow.
       Invoke-GitCommand -Arguments @('submodule', 'set-branch', '-b', $branch, '--', $sub.Path)
+
+      # If the submodule directory exists and is currently in detached HEAD state,
+      # check out the branch immediately so it has a real branch pointer right now —
+      # not just after the next 'git submodule update'.
+      if (Test-Path $sub.Path) {
+        $headResult = Invoke-NativeCommand -FileName 'git' -ArgumentList @('symbolic-ref', '--quiet', 'HEAD') 2>$null
+        Push-Location $sub.Path
+        try {
+          $headResult = Invoke-NativeCommand -FileName 'git' -Arguments @('symbolic-ref', '--quiet', 'HEAD')
+          if ($headResult.ExitCode -ne 0) {
+            Write-BabaInfo "Checking out branch '$branch' in detached submodule '$($sub.Path)'..."
+            Invoke-GitCommand -Arguments @('checkout', $branch)
+          }
+        } finally {
+          Pop-Location
+        }
+      }
+    }
+
+    # Also fix any submodule that already has a branch configured in .gitmodules but is still
+    # sitting in detached HEAD — e.g. after a plain 'git submodule update' without --merge.
+    $detached = @($declared | Where-Object {
+        $p = $_.Path
+        $_.Branch -and (Test-Path $p) -and (& {
+            Push-Location $p
+            try {
+              $r = Invoke-NativeCommand -FileName 'git' -Arguments @('symbolic-ref', '--quiet', 'HEAD')
+              return $r.ExitCode -ne 0
+            } finally { Pop-Location }
+          })
+      })
+
+    foreach ($sub in $detached) {
+      Write-Host ''
+      Write-BabaInfo "Submodule '$($sub.Path)' has tracked branch '$($sub.Branch)' but is detached — checking out..."
+      Push-Location $sub.Path
+      try {
+        Invoke-GitCommand -Arguments @('checkout', $sub.Branch)
+      } finally {
+        Pop-Location
+      }
     }
   }
 
@@ -1008,7 +1057,7 @@ function Get-MenuItems {
     [pscustomobject]@{ IsGroup = $false; Key = '7';  Label = 'Add submodule';                        Hint = '';                                                            RequiresSingleScope = $true  }
     [pscustomobject]@{ IsGroup = $false; Key = '8';  Label = 'Remove submodule';                     Hint = '';                                                            RequiresSingleScope = $true  }
     [pscustomobject]@{ IsGroup = $false; Key = '9';  Label = 'Set tracked branch';                   Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '10'; Label = 'Fix missing tracked branches';         Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '10'; Label = 'Fix missing tracked branches';         Hint = 'Also checks out the branch in any detached submodule.';       RequiresSingleScope = $false }
     [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
 
     [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Workflows (Auto-commit)';              Hint = '';                                                            RequiresSingleScope = $true  }
