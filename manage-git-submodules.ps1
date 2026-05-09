@@ -1092,6 +1092,146 @@ function Remove-StaleSubmodules {
 
 
 # ---------------------------------------------------------------------------
+# Commands — Hooks
+# ---------------------------------------------------------------------------
+
+# The hook content written to .git/hooks/post-checkout.
+# It fires after every `git checkout` / `git switch`. arg $3 is 1 for a branch
+# switch and 0 for a single-file checkout — we only sync on branch switches.
+# Always exits 0 so a failing submodule update never blocks the checkout itself.
+$script:hookContent = @'
+#!/usr/bin/env bash
+# BabaDeluxe Submodule Tamer — branch-sync hook
+# Auto-syncs submodules to the pinned commits of the newly checked-out branch.
+# Installed via manage-git-submodules.ps1 option [15].
+
+IS_BRANCH_SWITCH=$3
+
+if [ "$IS_BRANCH_SWITCH" != "1" ]; then
+  exit 0
+fi
+
+echo "[BabaTamer] Branch switched — syncing submodules..."
+git submodule update --init --recursive
+echo "[BabaTamer] Submodule sync done."
+exit 0
+'@
+
+function Get-HookPath {
+  # Resolves the absolute path to .git/hooks/post-checkout for the current repo root.
+  $gitDirResult = Invoke-NativeCommand -FileName 'git' -Arguments @('rev-parse', '--git-dir')
+  if ($gitDirResult.ExitCode -ne 0) { throw 'Could not resolve .git directory.' }
+  $gitDir = $gitDirResult.StandardOutputLines[0].Trim()
+  return Join-Path $gitDir 'hooks/post-checkout'
+}
+
+function Test-BranchSyncHookInstalled {
+  $hookPath = Get-HookPath
+  if (-not (Test-Path $hookPath)) { return $false }
+  $content = Get-Content -Raw $hookPath -ErrorAction SilentlyContinue
+  # Presence of our marker comment is the idempotency guard.
+  return $content -match 'BabaDeluxe Submodule Tamer'
+}
+
+function Install-BranchSyncHook {
+  Show-BabaScreen -Title 'Install Branch-Sync Hook'
+  Write-BabaStatus '[i]' 'Installs a post-checkout hook that auto-runs submodule update on every branch switch.' $script:brand.Muted
+  Write-BabaStatus '[i]' 'You will never need to manually run [4] after git checkout/switch again.' $script:brand.Muted
+  Write-Host ''
+
+  $hookPath = Get-HookPath
+
+  if (Test-BranchSyncHookInstalled) {
+    Write-BabaSuccess "Hook already installed at: $hookPath"
+    Pause-Baba
+    return
+  }
+
+  # If a post-checkout hook already exists but wasn't written by us, don't clobber it — append instead.
+  if (Test-Path $hookPath) {
+    Write-BabaStatus '[!]' 'A post-checkout hook already exists (not from BabaTamer).' $script:brand.Warning
+    Write-BabaStatus '[!]' "Path: $hookPath" $script:brand.Muted
+    $choice = (Read-Host 'Append our sync logic to the existing hook? (y/N)').Trim()
+    if ($choice -ne 'y' -and $choice -ne 'Y') {
+      Write-BabaInfo 'Aborted. Existing hook was not modified.'
+      Pause-Baba
+      return
+    }
+
+    $appendBlock = @"
+
+# BabaDeluxe Submodule Tamer — branch-sync hook (appended)
+IS_BRANCH_SWITCH=`$3
+if [ "`$IS_BRANCH_SWITCH" = "1" ]; then
+  echo "[BabaTamer] Branch switched — syncing submodules..."
+  git submodule update --init --recursive
+  echo "[BabaTamer] Submodule sync done."
+fi
+"@
+    Add-Content -Path $hookPath -Value $appendBlock -Encoding utf8
+    Write-BabaSuccess "Branch-sync logic appended to existing hook at: $hookPath"
+    Pause-Baba
+    return
+  }
+
+  # Fresh install — write the hook and make it executable via git's update-index.
+  $hooksDir = Split-Path $hookPath -Parent
+  if (-not (Test-Path $hooksDir)) {
+    New-Item -ItemType Directory -Path $hooksDir -Force | Out-Null
+  }
+
+  Set-Content -Path $hookPath -Value $script:hookContent -Encoding utf8 -NoNewline
+
+  # chmod +x equivalent on Windows via Git: mark the file executable in the index.
+  # This ensures the hook works when the repo is cloned on Linux/macOS too.
+  $chmodResult = Invoke-NativeCommand -FileName 'git' -Arguments @('update-index', '--chmod=+x', $hookPath)
+  if ($chmodResult.ExitCode -ne 0) {
+    # Non-fatal: the hook still works on Windows even without the executable bit.
+    Write-BabaStatus '[~]' 'Could not set executable bit (non-fatal on Windows).' $script:brand.Muted
+  }
+
+  Write-BabaSuccess "Hook installed at: $hookPath"
+  Write-BabaStatus '[i]' 'From now on, switching branches will automatically sync all submodules.' $script:brand.Highlight
+  Write-BabaStatus '[i]' 'Note: hooks live in .git/ and are not committed — each new clone needs [15] run once.' $script:brand.Muted
+
+  Pause-Baba
+}
+
+function Uninstall-BranchSyncHook {
+  Show-BabaScreen -Title 'Uninstall Branch-Sync Hook'
+
+  $hookPath = Get-HookPath
+
+  if (-not (Test-BranchSyncHookInstalled)) {
+    Write-BabaInfo 'No BabaTamer branch-sync hook is currently installed.'
+    Pause-Baba
+    return
+  }
+
+  $content = Get-Content -Raw $hookPath -ErrorAction SilentlyContinue
+
+  # Count non-BabaTamer lines to decide whether to delete the whole file or just strip our block.
+  $lines        = $content -split "`n"
+  $ourLineCount = ($lines | Where-Object { $_ -match 'BabaDeluxe|BabaTamer|IS_BRANCH_SWITCH|submodule update --init' }).Count
+  $totalLines   = $lines.Count
+
+  if ($ourLineCount -ge ($totalLines - 3)) {
+    # The whole file is essentially our hook — safe to delete it entirely.
+    Remove-Item -Path $hookPath -Force
+    Write-BabaSuccess "Hook removed: $hookPath"
+  } else {
+    # The file has other content — strip only our appended block, leave the rest intact.
+    $stripped = $content -replace '(?s)\n# BabaDeluxe Submodule Tamer.*?fi\n', ''
+    Set-Content -Path $hookPath -Value $stripped -Encoding utf8 -NoNewline
+    Write-BabaSuccess "BabaTamer block stripped from existing hook at: $hookPath"
+  }
+
+  Pause-Baba
+}
+
+
+
+# ---------------------------------------------------------------------------
 # Menu
 # ---------------------------------------------------------------------------
 
@@ -1121,6 +1261,11 @@ function Get-MenuItems {
     [pscustomobject]@{ IsGroup = $false; Key = '14'; Label = 'Set ignore = dirty on all submodules'; Hint = 'Stop git from flagging submodule internal changes as dirty.'; RequiresSingleScope = $false }
     [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
 
+    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Hooks';                                Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '15'; Label = 'Install branch-sync hook';             Hint = 'Auto-syncs submodules on every git checkout/switch.';         RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '16'; Label = 'Uninstall branch-sync hook';           Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+
     [pscustomobject]@{ IsGroup = $false; Key = 'r';  Label = 'Change scope';                         Hint = '';                                                            RequiresSingleScope = $false }
     [pscustomobject]@{ IsGroup = $false; Key = 'q';  Label = 'Quit';                                 Hint = '';                                                            RequiresSingleScope = $false }
   )
@@ -1130,6 +1275,10 @@ function Show-Menu {
   Show-BabaScreen -Title 'Submodule Manager'
   Write-BabaInfo "Scope: $($script:scope.Label)"
   Write-Host ''
+
+  $hookInstalled = Test-BranchSyncHookInstalled
+  $hookStatus    = if ($hookInstalled) { ' [installed]' } else { ' [not installed]' }
+  $hookColor     = if ($hookInstalled) { $script:brand.Success } else { $script:brand.Warning }
 
   $items = @(Get-MenuItems)
   if ($script:scope.IsAll) {
@@ -1143,7 +1292,13 @@ function Show-Menu {
     }
 
     Write-Host ('  [' + $item.Key + '] ') -NoNewline -ForegroundColor $script:brand.AccentDark
-    Write-Host $item.Label -ForegroundColor Gray
+    Write-Host $item.Label -ForegroundColor Gray -NoNewline
+
+    if ($item.Key -eq '15') {
+      Write-Host $hookStatus -ForegroundColor $hookColor
+    } else {
+      Write-Host ''
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($item.Hint)) {
       Write-Host "       $($item.Hint)" -ForegroundColor $script:brand.Muted
@@ -1169,6 +1324,8 @@ function Invoke-MenuChoice {
     '12' { Move-Submodule }
     '13' { Remove-StaleSubmodules }
     '14' { Set-SubmoduleIgnoreDirty }
+    '15' { Install-BranchSyncHook }
+    '16' { Uninstall-BranchSyncHook }
     'r'  { Select-WorkingScope }
     'q'  { $script:quit = $true }
     default { Write-BabaFailure "Unknown option '$Choice'." }
