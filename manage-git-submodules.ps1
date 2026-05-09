@@ -540,11 +540,20 @@ function Assert-SingleScope {
 }
 
 function Commit-SubmoduleChanges {
+  # Stage only .gitmodules and submodule pointer entries — never the full working tree.
+  # git add -A would sweep up any unrelated staged/unstaged work into a generic chore commit.
+  $subPaths = @(Get-DeclaredSubmodulePaths)
+  $pathsToStage = @('.gitmodules') + $subPaths
+
   $result = Invoke-NativeCommand -FileName 'git' -Arguments @('status', '--porcelain')
   if ($result.StandardOutputLines.Count -gt 0) {
     Write-Host ''
-    Write-BabaInfo 'Committing changes...'
-    Invoke-GitCommand -Arguments @('add', '-A')
+    Write-BabaInfo 'Committing submodule changes...'
+    foreach ($p in $pathsToStage) {
+      if (Test-Path $p) {
+        Invoke-GitCommand -Arguments @('add', '--', $p)
+      }
+    }
     Invoke-GitCommand -Arguments @('commit', '-m', 'chore: :wrench: Updated git submodules')
     Write-BabaSuccess 'Changes committed successfully.'
   } else {
@@ -585,6 +594,18 @@ function Select-SingleSubmodule {
 
 function Remove-SubmoduleByPath {
   param([string] $Path)
+
+  # Require explicit typed confirmation — deinit + git rm + Remove-Item are irreversible.
+  Write-Host ''
+  Write-BabaStatus '[!]' "You are about to permanently remove submodule '$Path'." $script:brand.Warning
+  Write-BabaStatus '[!]' 'This will deinit it, remove it from the index, and delete its cached module data.' $script:brand.Warning
+  Write-Host ''
+  $confirm = (Read-Host "Type YES to confirm removal of '$Path'").Trim()
+  if ($confirm -ne 'YES') {
+    Write-BabaInfo "Aborted — '$Path' was not removed."
+    return
+  }
+
   Write-BabaInfo "Removing '$Path'..."
 
   $deinitResult = Invoke-NativeCommand -FileName 'git' -Arguments @('submodule', 'deinit', '-f', '--', $Path)
@@ -710,7 +731,40 @@ function Sync-SubmodulesFull {
   Show-BabaScreen -Title 'Initialize & Update Submodules'
   Write-BabaStatus '[i]' 'Use this when submodules are missing, empty, or checked out at the wrong commit.' $script:brand.Muted
   Write-Host ''
+
   Invoke-InScope -WithDiagnosis {
+    # Warn about any submodule with local uncommitted changes before --remote resets them.
+    # git submodule update --remote hard-resets each sub to the remote branch tip,
+    # discarding any uncommitted work inside the submodule without asking.
+    $declared = @(Get-DeclaredSubmodulePaths)
+    $dirtySubmodules = @($declared | Where-Object {
+        $p = $_
+        if (-not (Test-Path $p)) { return $false }
+        Push-Location $p
+        try {
+          $statusResult = Invoke-NativeCommand -FileName 'git' -Arguments @('status', '--porcelain')
+          return $statusResult.StandardOutputLines.Count -gt 0
+        } finally {
+          Pop-Location
+        }
+      })
+
+    if ($dirtySubmodules.Count -gt 0) {
+      Write-Host ''
+      Write-BabaStatus '[!]' 'The following submodule(s) have uncommitted local changes:' $script:brand.Warning
+      foreach ($p in $dirtySubmodules) {
+        Write-Host "       $p" -ForegroundColor $script:brand.Muted
+      }
+      Write-BabaStatus '[!]' 'Running --remote will hard-reset these to the remote branch tip.' $script:brand.Warning
+      Write-BabaStatus '[!]' 'Uncommitted work inside these submodules will be lost.' $script:brand.Failure
+      Write-Host ''
+      $confirm = (Read-Host 'Continue anyway? (y/N)').Trim()
+      if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+        Write-BabaInfo 'Aborted. Commit or stash changes inside the submodule(s) first.'
+        return
+      }
+    }
+
     # --merge integrates the remote tip into the tracked branch instead of detaching HEAD onto a raw SHA.
     # Without it, every update leaves submodules in detached HEAD state — on a commit with no branch pointer.
     Invoke-GitCommand -Arguments @('submodule', 'update', '--remote', '--init', '--recursive', '--merge')
