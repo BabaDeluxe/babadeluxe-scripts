@@ -17,7 +17,7 @@ $scriptBlock = {
   Set-Location -Path $Directory
 
   Write-Host "[$Directory] Uninstalling packages..." -ForegroundColor Yellow
-  npm uninstall $PackageList
+  pnpm uninstall $PackageList
 
   if ($LASTEXITCODE -ne 0) {
     Write-Error "[$Directory] Uninstall failed"
@@ -25,7 +25,7 @@ $scriptBlock = {
   }
 
   Write-Host "[$Directory] Installing packages as dev dependencies..." -ForegroundColor Cyan
-  npm i -D $PackageList
+  pnpm i -D $PackageList
 
   if ($LASTEXITCODE -ne 0) {
     Write-Error "[$Directory] Install failed"
