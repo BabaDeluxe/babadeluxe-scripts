@@ -1,1 +1,0 @@
-./agent-resources/AGENT_PROMPT.agent.md
