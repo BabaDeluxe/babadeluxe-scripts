@@ -1,78 +1,74 @@
 {
-    "editor.insertSpaces": true,
-    "git.enableSmartCommit": false,
-    "git.suggestSmartCommit": false,
-    "js/ts.tsserver.experimental.enableProjectDiagnostics": false,
-    "editor.formatOnSave": true,
-    "editor.formatOnType": false,
-    "xo.enable": true,
-    "xo.format.enable": true,
-    "editor.codeActionsOnSave": {
-        "source.fixAll": "always",
-        "source.fixAll.xo": "always"
+  "editor.insertSpaces": true,
+  "git.enableSmartCommit": false,
+  "git.suggestSmartCommit": false,
+  "js/ts.tsserver.experimental.enableProjectDiagnostics": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": false,
+  "xo.enable": true,
+  "xo.format.enable": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "always",
+    "source.fixAll.xo": "always"
+  },
+  "files.exclude": {
+    "**/out/**": false,
+    "**/dist/**": false
+  },
+  "search.exclude": {
+    "**/out/**": true,
+    "**/dist/**": true
+  },
+  "editor.formatOnSaveMode": "file",
+  "search.quickOpen.includeHistory": true,
+  "eslint.enable": false,
+  "eslint.format.enable": false,
+  "js/ts.suggest.paths": true,
+  "terminal.integrated.detectLocale": "on",
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "[vue]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "samverschueren.linter-xo"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "samverschueren.linter-xo"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "samverschueren.linter-xo"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "samverschueren.linter-xo"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[jsonc]": {
+    "editor.quickSuggestions": {
+      "strings": true
     },
-    "files.exclude": {
-        "**/out/**": false,
-        "**/dist/**": false,
-    },
-    "search.exclude": {
-        "**/out/**": true,
-        "**/dist/**": true,
-    },
-    "editor.formatOnSaveMode": "file",
-    "search.quickOpen.includeHistory": true,
-    "eslint.enable": false,
-    "eslint.format.enable": false,
-    "js/ts.suggest.paths": true,
-    "terminal.integrated.detectLocale": "on",
+    "editor.suggest.insertMode": "replace",
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "powershell.codeFormatting.preset": "OTBS",
+  "powershell.codeFormatting.whitespaceBeforeOpenBrace": true,
+  "powershell.codeFormatting.whitespaceBeforeOpenParen": true,
+  "powershell.codeFormatting.whitespaceAroundOperator": true,
+  "powershell.codeFormatting.whitespaceAfterSeparator": true,
+  // "powershell.powerShellAdditionalExePaths": {
+  //   "Local PowerShell": "C:/Program Files/PowerShell/7/pwsh.exe"
+  // },
+  // "powershell.powerShellDefaultVersion": "Local PowerShell",
+  "[powershell]": {
+    "debug.saveBeforeStart": "nonUntitledEditorsInActiveGroup",
+    "editor.semanticHighlighting.enabled": false,
+    "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",.<>/?",
+    "editor.renderWhitespace": "all",
+    "editor.renderControlCharacters": true,
+    "files.trimTrailingWhitespace": true,
     "files.encoding": "utf8",
-    "files.eol": "\n",
-    "[vue]": {
-        "editor.defaultFormatter": "vscode.typescript-language-features"
-    },
-    "[javascript]": {
-        "editor.defaultFormatter": "samverschueren.linter-xo"
-    },
-    "[typescript]": {
-        "editor.defaultFormatter": "samverschueren.linter-xo"
-    },
-    "[javascriptreact]": {
-        "editor.defaultFormatter": "samverschueren.linter-xo"
-    },
-    "[typescriptreact]": {
-        "editor.defaultFormatter": "samverschueren.linter-xo"
-    },
-    "[json]": {
-        "editor.defaultFormatter": "vscode.json-language-features"
-    },
-    "[jsonc]": {
-        "editor.quickSuggestions": {
-            "strings": true
-        },
-        "editor.suggest.insertMode": "replace",
-        "editor.defaultFormatter": "vscode.json-language-features"
-    },
-    "powershell.codeFormatting.preset": "OTBS",
-    // Adds a space between a keyword and its associated scriptblock expression.
-    "powershell.codeFormatting.whitespaceBeforeOpenBrace": true,
-    // Adds a space between a keyword (if, elseif, while, switch, etc) and its associated conditional expression.
-    "powershell.codeFormatting.whitespaceBeforeOpenParen": true,
-    // Adds spaces before and after an operator ('=', '+', '-', etc.).
-    "powershell.codeFormatting.whitespaceAroundOperator": true,
-    // Adds a space after a separator (',' and ';').
-    "powershell.codeFormatting.whitespaceAfterSeparator": true,
-    "powershell.powerShellAdditionalExePaths": {
-        "Local PowerShell": "C:/Program Files/PowerShell/7/pwsh.exe",
-    },
-    "powershell.powerShellDefaultVersion": "Local PowerShell",
-    "[powershell]": {
-        "debug.saveBeforeStart": "nonUntitledEditorsInActiveGroup",
-        "editor.semanticHighlighting.enabled": false,
-        "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",.<>/?",
-        "editor.renderWhitespace": "all",
-        "editor.renderControlCharacters": true,
-        "files.trimTrailingWhitespace": true,
-        "files.encoding": "utf8bom",
-        "files.autoGuessEncoding": true,
-    }
+    "files.autoGuessEncoding": true
+  }
 }
