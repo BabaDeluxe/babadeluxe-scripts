@@ -39,7 +39,7 @@ function Show-BabaScreen {
   }
 }
 
-function Write-BabaInfo    { param([string]$Msg) Write-Host "[~] $Msg" -ForegroundColor $script:brand.Highlight }
+function Write-BabaInfo { param([string]$Msg) Write-Host "[~] $Msg" -ForegroundColor $script:brand.Highlight }
 function Write-BabaSuccess { param([string]$Msg) Write-Host "[✓] $Msg" -ForegroundColor $script:brand.Success }
 function Write-BabaFailure { param([string]$Msg) Write-Host "[✗] $Msg" -ForegroundColor $script:brand.Failure }
 
@@ -71,6 +71,7 @@ function Invoke-NativeCommand {
 
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName               = $FileName
+  $psi.WorkingDirectory       = (Get-Location).Path
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError  = $true
   $psi.UseShellExecute        = $false
@@ -296,9 +297,9 @@ function Get-SubmoduleStatusLines {
 }
 
 function Get-DeclaredSubmodulePaths {
-  # Reads paths declared in .gitmodules — source of truth regardless of init state
-  if (-not (Test-Path '.gitmodules')) { return @() }
-  $result = Invoke-NativeCommand -FileName 'git' -Arguments @('config', '--file', '.gitmodules', '--get-regexp', 'submodule\..*\.path')
+  $gitmodulesPath = Join-Path (Get-Location) '.gitmodules'
+  if (-not (Test-Path $gitmodulesPath)) { return @() }
+  $result = Invoke-NativeCommand -FileName 'git' -Arguments @('config', '--file', $gitmodulesPath, '--get-regexp', 'submodule\..*\.path')
   return @(
     $result.StandardOutputLines |
     Where-Object { $_ -match '^submodule\..+\.path\s+(.+)$' } |
@@ -314,7 +315,7 @@ function Get-DeclaredSubmoduleDetails {
       $path = $_
       $name = ($path -replace '/', '\.')
 
-      $urlResult    = Invoke-NativeCommand -FileName 'git' -Arguments @('config', '--file', '.gitmodules', "submodule.$name.url")
+      $urlResult = Invoke-NativeCommand -FileName 'git' -Arguments @('config', '--file', '.gitmodules', "submodule.$name.url")
       $branchResult = Invoke-NativeCommand -FileName 'git' -Arguments @('config', '--file', '.gitmodules', "submodule.$name.branch")
 
       [pscustomobject]@{
@@ -380,7 +381,7 @@ function Write-SubmoduleTable {
 
 function Write-SubmoduleDiagnosis {
   # Cross-references .gitmodules declarations vs git submodule status to emit targeted tips
-  $declared    = @(Get-DeclaredSubmoduleDetails)
+  $declared = @(Get-DeclaredSubmoduleDetails)
   $statusLines = @(Get-SubmoduleStatusLines)
 
   if ($declared.Count -eq 0 -and -not (Test-Path '.gitmodules')) {
@@ -457,9 +458,9 @@ function Write-SubmoduleDiagnosis {
       } else { $null }
 
       if ($aheadBehindResult -and $aheadBehindResult.ExitCode -eq 0 -and $aheadBehindResult.StandardOutputLines.Count -gt 0) {
-        $parts        = $aheadBehindResult.StandardOutputLines[0] -split '\s+'
+        $parts = $aheadBehindResult.StandardOutputLines[0] -split '\s+'
         $parentBehind = [int]$parts[0]  # commits in pinned not in HEAD = submodule is behind pinned
-        $subAhead     = [int]$parts[1]  # commits in HEAD not in pinned = submodule is ahead of pinned
+        $subAhead = [int]$parts[1]  # commits in HEAD not in pinned = submodule is ahead of pinned
 
         if ($subAhead -gt 0 -and $parentBehind -eq 0) {
           Write-BabaStatus '[!]' "  $subAhead new commit(s) in submodule not yet pinned by the parent." $script:brand.Warning
@@ -587,7 +588,7 @@ function Read-SubmoduleChoice {
 function Select-SingleSubmodule {
   param([string[]] $RegisteredPaths, [string] $Prompt = 'Select submodule')
   Show-SubmoduleList -Paths $RegisteredPaths
-  $selected = Read-SubmoduleChoice -Paths $Paths -Prompt $Prompt
+  $selected = Read-SubmoduleChoice -Paths $RegisteredPaths -Prompt $Prompt
   if (-not $selected) { throw 'Invalid selection. Aborting.' }
   return $selected
 }
@@ -701,8 +702,9 @@ function Select-BranchFromRemote {
 
 function Show-Submodules {
   Show-BabaScreen -Title 'Submodule Status'
+
   Invoke-InScope -WithDiagnosis {
-    $details     = @(Get-DeclaredSubmoduleDetails)
+    $details = @(Get-DeclaredSubmoduleDetails)
     $statusLines = @(Get-SubmoduleStatusLines)
     Write-SubmoduleTable -Details $details -StatusLines $statusLines
   }
@@ -712,7 +714,7 @@ function Show-Submodules {
 function Show-SubmoduleSummary {
   Show-BabaScreen -Title 'Submodule Summary'
   Invoke-InScope -WithDiagnosis {
-    $details     = @(Get-DeclaredSubmoduleDetails)
+    $details = @(Get-DeclaredSubmoduleDetails)
     $statusLines = @(Get-SubmoduleStatusLines)
     Write-SubmoduleTable -Details $details -StatusLines $statusLines
     Write-Host ''
@@ -793,9 +795,9 @@ function Add-Submodule {
   Show-BabaScreen -Title 'Add Submodule'
 
   $repository = Read-Host 'Repository URL'
-  $path       = Read-Host 'Path'
+  $path = Read-Host 'Path'
 
-  $branch    = $null
+  $branch = $null
   $useBranch = Read-Host 'Specify a branch to track? (y/N)'
   if ($useBranch -eq 'y' -or $useBranch -eq 'Y') {
     $branch = Select-BranchFromRemote -RepositoryUrl $repository -Prompt 'Select branch'
@@ -818,56 +820,48 @@ function Add-Submodule {
 }
 
 function Remove-Submodule {
-  Assert-SingleScope
   Show-BabaScreen -Title 'Remove Submodule'
-
-  $paths = @(Get-RegisteredSubmodules)
-  Assert-HasSubmodules -Paths $paths
-
-  $path = Select-SingleSubmodule -RegisteredPaths $paths
 
   Invoke-InScope -WithDiagnosis {
     $subsHere = @(Get-DeclaredSubmodulePaths)
-    if ($path -in $subsHere) {
-      Remove-SubmoduleByPath -Path $path
-    } else {
-      Write-BabaStatus '[~]' "Submodule '$path' not found in this folder – skipping." $script:brand.Muted
-    }
+    Assert-HasSubmodules -Paths $subsHere
+
+    $path = Select-SingleSubmodule -RegisteredPaths $subsHere
+
+    Remove-SubmoduleByPath -Path $path
   }
 
   Pause-Baba
 }
 
 function Set-SubmoduleBranch {
-  Assert-SingleScope
   Show-BabaScreen -Title 'Set Tracked Branch'
-
-  $paths = @(Get-RegisteredSubmodules)
-  Assert-HasSubmodules -Paths $paths
-
-  $path = Select-SingleSubmodule -RegisteredPaths $paths
-  $url  = Get-SubmoduleUrl -Path $path
-
-  if ($url) {
-    $branch = Select-BranchFromRemote -RepositoryUrl $url -Prompt 'Select branch'
-    if (-not $branch) {
-      Write-BabaStatus '[!]' 'Falling back to manual branch entry.' $script:brand.Warning
-      $branch = Read-Host 'Branch name'
-    }
-  } else {
-    Write-BabaStatus '[!]' 'Could not determine submodule URL. Manual entry required.' $script:brand.Warning
-    $branch = Read-Host 'Branch name'
-  }
-
-  if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Branch name cannot be empty.' }
 
   Invoke-InScope -WithDiagnosis {
     $subsHere = @(Get-DeclaredSubmodulePaths)
-    if ($path -in $subsHere) {
-      Invoke-GitCommand -Arguments @('submodule', 'set-branch', '-b', $branch, '--', $path)
+    Assert-HasSubmodules -Paths $subsHere
+
+    $path = Select-SingleSubmodule -RegisteredPaths $subsHere
+    $url = Get-SubmoduleUrl -Path $path
+
+    $branch = $null
+
+    if ($url) {
+      $branch = Select-BranchFromRemote -RepositoryUrl $url -Prompt 'Select branch'
+      if (-not $branch) {
+        Write-BabaStatus '[!]' 'Falling back to manual branch entry.' $script:brand.Warning
+        $branch = Read-Host 'Branch Name'
+      }
     } else {
-      Write-BabaStatus '[~]' "Submodule '$path' not found – skipping." $script:brand.Muted
+      Write-BabaStatus '[!]' 'Could not determine submodule URL. Manual entry required.' $script:brand.Warning
+      $branch = Read-Host 'Branch name'
     }
+
+    if ([string]::IsNullOrWhiteSpace($branch)) {
+      throw 'Branch name cannot be empty.'
+    }
+
+    Invoke-GitCommand -Arguments @('submodule', 'set-branch', '-b', $branch, '--', $path)
   }
 
   Pause-Baba
@@ -916,7 +910,7 @@ function Fix-MissingTrackedBranches {
 
   Invoke-InScope -WithDiagnosis {
     $declared = @(Get-DeclaredSubmoduleDetails)
-    $missing  = @($declared | Where-Object { -not $_.Branch })
+    $missing = @($declared | Where-Object { -not $_.Branch })
 
     if ($missing.Count -eq 0) {
       Write-BabaSuccess 'No submodules are missing a tracked branch in this scope.'
@@ -1000,24 +994,18 @@ function Fix-MissingTrackedBranches {
 # ---------------------------------------------------------------------------
 
 function Update-SubmoduleUrl {
-  Assert-SingleScope
   Show-BabaScreen -Title 'Update Submodule URL'
-
-  $paths = @(Get-RegisteredSubmodules)
-  Assert-HasSubmodules -Paths $paths
-
-  $path   = Select-SingleSubmodule -RegisteredPaths $paths
-  $newUrl = Read-Host "New URL for '$path'"
-  if ([string]::IsNullOrWhiteSpace($newUrl)) { throw 'URL cannot be empty.' }
 
   Invoke-InScope -WithDiagnosis {
     $subsHere = @(Get-DeclaredSubmodulePaths)
-    if ($path -in $subsHere) {
-      Invoke-GitCommand -Arguments @('submodule', 'set-url', '--', $path, $newUrl)
-      Invoke-GitCommand -Arguments @('submodule', 'sync', '--', $path)
-    } else {
-      Write-BabaStatus '[~]' "Submodule '$path' not found – skipping." $script:brand.Muted
-    }
+    Assert-HasSubmodules -Paths $subsHere
+
+    $path = Select-SingleSubmodule -RegisteredPaths $subsHere
+    $newUrl = Read-Host "New URL for '$path'"
+    if ([string]::IsNullOrWhiteSpace($newUrl)) { throw 'URL cannot be empty.' }
+
+    Invoke-GitCommand -Arguments @('submodule', 'set-url', '--', $path, $newUrl)
+    Invoke-GitCommand -Arguments @('submodule', 'sync', '--', $path)
 
     Commit-SubmoduleChanges
   }
@@ -1026,24 +1014,18 @@ function Update-SubmoduleUrl {
 }
 
 function Move-Submodule {
-  Assert-SingleScope
   Show-BabaScreen -Title 'Move/Rename Submodule'
-
-  $paths = @(Get-RegisteredSubmodules)
-  Assert-HasSubmodules -Paths $paths
-
-  $oldPath = Select-SingleSubmodule -RegisteredPaths $paths -Prompt 'Select submodule to move'
-  $newPath = Read-Host "New path/name for '$oldPath'"
-  if ([string]::IsNullOrWhiteSpace($newPath)) { throw 'Path cannot be empty.' }
 
   Invoke-InScope -WithDiagnosis {
     $subsHere = @(Get-DeclaredSubmodulePaths)
-    if ($oldPath -in $subsHere) {
-      Write-BabaInfo "Moving '$oldPath' -> '$newPath'..."
-      Invoke-GitCommand -Arguments @('mv', $oldPath, $newPath)
-    } else {
-      Write-BabaStatus '[~]' "Submodule '$oldPath' not found – skipping." $script:brand.Muted
-    }
+    Assert-HasSubmodules -Paths $subsHere
+
+    $oldPath = Select-SingleSubmodule -RegisteredPaths $subsHere -Prompt 'Select submodule to move'
+    $newPath = Read-Host "New path/name for '$oldPath'"
+    if ([string]::IsNullOrWhiteSpace($newPath)) { throw 'Path cannot be empty.' }
+
+    Write-BabaInfo "Moving '$oldPath' -> '$newPath'..."
+    Invoke-GitCommand -Arguments @('mv', $oldPath, $newPath)
 
     Commit-SubmoduleChanges
   }
@@ -1052,36 +1034,29 @@ function Move-Submodule {
 }
 
 function Remove-StaleSubmodules {
-  Assert-SingleScope
   Show-BabaScreen -Title 'Clean up submodules'
-
-  $paths = @(Get-RegisteredSubmodules)
-  Assert-HasSubmodules -Paths $paths
-
-  Write-BabaInfo 'Select the SINGLE submodule to KEEP. All others will be removed.'
-  Write-Host ''
-
-  $keeper = Select-SingleSubmodule -RegisteredPaths $paths -Prompt 'Submodule to keep'
-  $newUrl = Read-Host "Correct URL for '$keeper'"
-  if ([string]::IsNullOrWhiteSpace($newUrl)) { throw 'URL cannot be empty.' }
 
   Invoke-InScope -WithDiagnosis {
     $subsHere = @(Get-DeclaredSubmodulePaths)
+    Assert-HasSubmodules -Paths $subsHere
+
+    Write-BabaInfo 'Select the SINGLE submodule to KEEP. All others will be removed.'
+    Write-Host ''
+
+    $keeper = Select-SingleSubmodule -RegisteredPaths $subsHere -Prompt 'Submodule to keep'
+    $newUrl = Read-Host "Correct URL for '$keeper'"
+    if ([string]::IsNullOrWhiteSpace($newUrl)) { throw 'URL cannot be empty.' }
+
     foreach ($p in $subsHere) {
       if ($p -eq $keeper) { continue }
-
       Write-Host ''
       Remove-SubmoduleByPath -Path $p
     }
 
-    if ($keeper -in $subsHere) {
-      Write-Host ''
-      Write-BabaInfo "Updating URL for '$keeper'..."
-      Invoke-GitCommand -Arguments @('submodule', 'set-url', '--', $keeper, $newUrl)
-      Invoke-GitCommand -Arguments @('submodule', 'sync', '--recursive')
-    } else {
-      Write-BabaStatus '[~]' "Keeper submodule '$keeper' not found in this folder – skipping URL update." $script:brand.Warning
-    }
+    Write-Host ''
+    Write-BabaInfo "Updating URL for '$keeper'..."
+    Invoke-GitCommand -Arguments @('submodule', 'set-url', '--', $keeper, $newUrl)
+    Invoke-GitCommand -Arguments @('submodule', 'sync', '--recursive')
 
     Commit-SubmoduleChanges
   }
@@ -1211,9 +1186,9 @@ function Uninstall-BranchSyncHook {
   $content = Get-Content -Raw $hookPath -ErrorAction SilentlyContinue
 
   # Count non-BabaTamer lines to decide whether to delete the whole file or just strip our block.
-  $lines        = $content -split "`n"
+  $lines = $content -split "`n"
   $ourLineCount = ($lines | Where-Object { $_ -match 'BabaDeluxe|BabaTamer|IS_BRANCH_SWITCH|submodule update --init' }).Count
-  $totalLines   = $lines.Count
+  $totalLines = $lines.Count
 
   if ($ourLineCount -ge ($totalLines - 3)) {
     # The whole file is essentially our hook — safe to delete it entirely.
@@ -1237,37 +1212,37 @@ function Uninstall-BranchSyncHook {
 
 function Get-MenuItems {
   @(
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Inspect';                              Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '1';  Label = 'Show submodules';                      Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '2';  Label = 'Show submodule summary';               Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = 'Inspect'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '1'; Label = 'Show submodules'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '2'; Label = 'Show submodule summary'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = ''; Hint = ''; RequiresSingleScope = $false }
 
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Sync and update';                      Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '4';  Label = 'Initialize & Update submodules';       Hint = 'Missing, empty, or wrong commit? Run this.';                  RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '5';  Label = 'Sync URLs from .gitmodules';           Hint = 'Changed a URL in .gitmodules? Run this to apply it.';         RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = 'Sync and update'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '4'; Label = 'Initialize & Update submodules'; Hint = 'Missing, empty, or wrong commit? Run this.'; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '5'; Label = 'Sync URLs from .gitmodules'; Hint = 'Changed a URL in .gitmodules? Run this to apply it.'; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = ''; Hint = ''; RequiresSingleScope = $false }
 
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Manage';                               Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '7';  Label = 'Add submodule';                        Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '8';  Label = 'Remove submodule';                     Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '9';  Label = 'Set tracked branch';                   Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '10'; Label = 'Fix missing tracked branches';         Hint = 'Also checks out the branch in any detached submodule.';       RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = 'Manage'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '7'; Label = 'Add submodule'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '8'; Label = 'Remove submodule'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '9'; Label = 'Set tracked branch'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '10'; Label = 'Fix missing tracked branches'; Hint = 'Also checks out the branch in any detached submodule.'; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = ''; Hint = ''; RequiresSingleScope = $false }
 
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Workflows (Auto-commit)';              Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '11'; Label = 'Update submodule URL';                 Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '12'; Label = 'Move/Rename submodule';                Hint = '';                                                            RequiresSingleScope = $true  }
-    [pscustomobject]@{ IsGroup = $false; Key = '13'; Label = 'Clean up submodules';                  Hint = '';                                                            RequiresSingleScope = $true  }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = 'Workflows (Auto-commit)'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '11'; Label = 'Update submodule URL'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '12'; Label = 'Move/Rename submodule'; Hint = ''; RequiresSingleScope = $true }
+    [pscustomobject]@{ IsGroup = $false; Key = '13'; Label = 'Clean up submodules'; Hint = ''; RequiresSingleScope = $true }
     [pscustomobject]@{ IsGroup = $false; Key = '14'; Label = 'Set ignore = dirty on all submodules'; Hint = 'Stop git from flagging submodule internal changes as dirty.'; RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = ''; Hint = ''; RequiresSingleScope = $false }
 
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = 'Hooks';                                Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '15'; Label = 'Install branch-sync hook';             Hint = 'Auto-syncs submodules on every git checkout/switch.';         RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = '16'; Label = 'Uninstall branch-sync hook';           Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $true;  Key = '';   Label = '';                                      Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = 'Hooks'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '15'; Label = 'Install branch-sync hook'; Hint = 'Auto-syncs submodules on every git checkout/switch.'; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = '16'; Label = 'Uninstall branch-sync hook'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $true; Key = ''; Label = ''; Hint = ''; RequiresSingleScope = $false }
 
-    [pscustomobject]@{ IsGroup = $false; Key = 'r';  Label = 'Change scope';                         Hint = '';                                                            RequiresSingleScope = $false }
-    [pscustomobject]@{ IsGroup = $false; Key = 'q';  Label = 'Quit';                                 Hint = '';                                                            RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = 'r'; Label = 'Change scope'; Hint = ''; RequiresSingleScope = $false }
+    [pscustomobject]@{ IsGroup = $false; Key = 'q'; Label = 'Quit'; Hint = ''; RequiresSingleScope = $false }
   )
 }
 
@@ -1277,8 +1252,8 @@ function Show-Menu {
   Write-Host ''
 
   $hookInstalled = Test-BranchSyncHookInstalled
-  $hookStatus    = if ($hookInstalled) { ' [installed]' } else { ' [not installed]' }
-  $hookColor     = if ($hookInstalled) { $script:brand.Success } else { $script:brand.Warning }
+  $hookStatus = if ($hookInstalled) { ' [installed]' } else { ' [not installed]' }
+  $hookColor = if ($hookInstalled) { $script:brand.Success } else { $script:brand.Warning }
 
   $items = @(Get-MenuItems)
   if ($script:scope.IsAll) {
@@ -1312,13 +1287,13 @@ function Invoke-MenuChoice {
   param([string] $Choice)
 
   switch ($Choice.Trim()) {
-    '1'  { Show-Submodules }
-    '2'  { Show-SubmoduleSummary }
-    '4'  { Sync-SubmodulesFull }
-    '5'  { Sync-Submodules }
-    '7'  { Add-Submodule }
-    '8'  { Remove-Submodule }
-    '9'  { Set-SubmoduleBranch }
+    '1' { Show-Submodules }
+    '2' { Show-SubmoduleSummary }
+    '4' { Sync-SubmodulesFull }
+    '5' { Sync-Submodules }
+    '7' { Add-Submodule }
+    '8' { Remove-Submodule }
+    '9' { Set-SubmoduleBranch }
     '10' { Fix-MissingTrackedBranches }
     '11' { Update-SubmoduleUrl }
     '12' { Move-Submodule }
@@ -1326,8 +1301,8 @@ function Invoke-MenuChoice {
     '14' { Set-SubmoduleIgnoreDirty }
     '15' { Install-BranchSyncHook }
     '16' { Uninstall-BranchSyncHook }
-    'r'  { Select-WorkingScope }
-    'q'  { $script:quit = $true }
+    'r' { Select-WorkingScope }
+    'q' { $script:quit = $true }
     default { Write-BabaFailure "Unknown option '$Choice'." }
   }
 }

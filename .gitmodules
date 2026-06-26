@@ -30,7 +30,3 @@
 	branch = main
 
 
-[submodule "babadeluxe-docs"]
-	path = babadeluxe-docs
-	url = https://github.com/BabaDeluxe/babadeluxe-docs
-	branch = master
