@@ -1,5 +1,6 @@
 {
   "editor.insertSpaces": true,
+  "editor.formatOnSaveMode": "modificationsIfAvailable",
   "git.enableSmartCommit": false,
   "git.suggestSmartCommit": false,
   "js/ts.tsserver.experimental.enableProjectDiagnostics": true,
@@ -7,19 +8,14 @@
   "editor.formatOnType": false,
   "xo.enable": true,
   "xo.format.enable": true,
-  "editor.codeActionsOnSave": {
-    "source.fixAll": "always",
-    "source.fixAll.xo": "always"
-  },
+  // "editor.codeActionsOnSave": {
+  //   "source.fixAll": "always",
+  //   "source.fixAll.xo": "always"
+  // },
   "files.exclude": {
     "**/out/**": false,
     "**/dist/**": false
   },
-  "search.exclude": {
-    "**/out/**": true,
-    "**/dist/**": true
-  },
-  "editor.formatOnSaveMode": "file",
   "search.quickOpen.includeHistory": true,
   "eslint.enable": false,
   "eslint.format.enable": false,
@@ -43,14 +39,16 @@
     "editor.defaultFormatter": "samverschueren.linter-xo"
   },
   "[json]": {
-    "editor.defaultFormatter": "vscode.json-language-features"
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.formatOnSave": false
   },
   "[jsonc]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.formatOnSave": false,
     "editor.quickSuggestions": {
       "strings": true
     },
-    "editor.suggest.insertMode": "replace",
-    "editor.defaultFormatter": "vscode.json-language-features"
+    "editor.suggest.insertMode": "replace"
   },
   "powershell.codeFormatting.preset": "OTBS",
   "powershell.codeFormatting.whitespaceBeforeOpenBrace": true,
@@ -70,5 +68,24 @@
     "files.trimTrailingWhitespace": true,
     "files.encoding": "utf8",
     "files.autoGuessEncoding": true
+  },
+  // Tell VS Code's git to not scan inside submodules separately
+  "git.detectSubmodules": true,
+  "git.detectSubmodulesLimit": 1, // caps at your exact submodule count
+  // "git.repositoryScanMaxDepth": 1, // experimental — limits scan depth
+  // Exclude submodule folders from file watcher entirely
+  "files.watcherExclude": {
+    "**/babadeluxe-backend/**": true,
+    "**/babadeluxe-shared/**": true,
+    "**/babadeluxe-webview/**": true,
+    "**/babadeluxe-landing/**": true,
+    "**/babadeluxe-vscode/**": true,
+    "**/babadeluxe-docs/**": true
+  },
+  "search.exclude": {
+    "**/out/**": true,
+    "**/dist/**": true,
+    "**/node_modules": true,
+    "**/babadeluxe-*/node_modules": true
   }
 }
